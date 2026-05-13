@@ -1,3 +1,6 @@
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import * as Session from "./session"
@@ -32,8 +35,8 @@ export const Event = {
   ),
 }
 
-export const PRUNE_MINIMUM = 20_000
-export const PRUNE_PROTECT = 40_000
+export const PRUNE_MINIMUM = 0
+export const PRUNE_PROTECT = 20_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
 const DEFAULT_TAIL_TURNS = 2
@@ -124,7 +127,7 @@ function completedCompactions(messages: MessageV2.WithParts[]) {
   })
 }
 
-function buildPrompt(input: { previousSummary?: string; context: string[] }) {
+function buildPrompt(input: { previousSummary?: string; context: string[]; template?: string }) {
   const anchor = input.previousSummary
     ? [
         "Update the anchored summary below using the conversation history above.",
@@ -134,7 +137,7 @@ function buildPrompt(input: { previousSummary?: string; context: string[] }) {
         "</previous-summary>",
       ].join("\n")
     : "Create a new anchored summary from the conversation history above."
-  return [anchor, SUMMARY_TEMPLATE, ...input.context].join("\n\n")
+  return [anchor, input.template ?? SUMMARY_TEMPLATE, ...input.context].join("\n\n")
 }
 
 function preserveRecentBudget(input: { cfg: Config.Info; model: Provider.Model }) {
@@ -311,6 +314,10 @@ export const layer: Layer.Layer<
       if (reason === "normal" && cfg.compaction?.prune !== true) return
       log.info("pruning", { reason })
 
+      const pruneProtect = cfg.compaction?.prune_protect ?? PRUNE_PROTECT
+      const pruneMinimum = cfg.compaction?.prune_minimum ?? PRUNE_MINIMUM
+      const protectedTools = cfg.compaction?.protected_tools ?? PRUNE_PROTECTED_TOOLS
+
       const msgs = yield* session
         .messages({ sessionID: input.sessionID })
         .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
@@ -330,18 +337,18 @@ export const layer: Layer.Layer<
           const part = msg.parts[partIndex]
           if (part.type !== "tool") continue
           if (part.state.status !== "completed") continue
-          if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+          if (protectedTools.includes(part.tool)) continue
           if (part.state.time.compacted) break loop
           const estimate = Token.estimate(part.state.output)
           total += estimate
-          if (total <= PRUNE_PROTECT) continue
+          if (total <= pruneProtect) continue
           pruned += estimate
           toPrune.push(part)
         }
       }
 
       log.info("found", { pruned, total })
-      if (pruned > PRUNE_MINIMUM) {
+      if (pruned > pruneMinimum) {
         for (const part of toPrune) {
           if (part.state.status === "completed") {
             part.state.time.compacted = Date.now()
@@ -408,20 +415,40 @@ export const layer: Layer.Layer<
         model,
         tailTurns: input.tailTurns,
       })
+      const ctx = yield* InstanceState.context
+
+      // Load custom prompt template from file if configured.
+      let customTemplate: string | undefined
+      const promptFile = cfg.compaction?.prompt_file
+      if (promptFile) {
+        const resolved = promptFile.startsWith("~/")
+          ? path.join(os.homedir(), promptFile.slice(2))
+          : path.isAbsolute(promptFile)
+            ? promptFile
+            : path.resolve(ctx.worktree, promptFile)
+        customTemplate = yield* Effect.tryPromise(() => fs.readFile(resolved, "utf-8")).pipe(
+          Effect.catch((e) =>
+            Effect.sync(() => {
+              log.error("failed to read prompt_file", { path: resolved, error: e })
+              return undefined as string | undefined
+            }),
+          ),
+        )
+      }
+
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
+      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context, template: customTemplate })
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
         stripMedia: true,
         toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
       })
-      const ctx = yield* InstanceState.context
       const msg: MessageV2.Assistant = {
         id: MessageID.ascending(),
         role: "assistant",

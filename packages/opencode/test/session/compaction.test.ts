@@ -1769,6 +1769,56 @@ describe("session.compaction.process", () => {
     })
   })
 
+  test("loads a custom compaction prompt from the workspace root", async () => {
+    const stub = llm()
+    let captured = ""
+    stub.push(
+      reply("summary one", (input) => {
+        captured = JSON.stringify(input.messages)
+      }),
+    )
+
+    await using tmp = await tmpdir({ git: true })
+    await Bun.write(tmp.path + "/compaction-prompt.md", "## Custom Template\n- keep only workspace facts")
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await svc.create({})
+        await user(session.id, "older context")
+        await SessionCompaction.create({
+          sessionID: session.id,
+          agent: "build",
+          model: ref,
+          auto: false,
+        })
+
+        const rt = liveRuntime(stub.layer, wide(), cfg({ prompt_file: "compaction-prompt.md" }))
+        try {
+          const msgs = await svc.messages({ sessionID: session.id })
+          const parent = msgs.at(-1)?.info.id
+          expect(parent).toBeTruthy()
+          await rt.runPromise(
+            SessionCompaction.Service.use((svc) =>
+              svc.process({
+                parentID: parent!,
+                messages: msgs,
+                sessionID: session.id,
+                auto: false,
+              }),
+            ),
+          )
+
+          expect(captured).toContain("## Custom Template")
+          expect(captured).toContain("keep only workspace facts")
+          expect(captured).not.toContain("## Constraints & Preferences")
+        } finally {
+          await rt.dispose()
+        }
+      },
+    })
+  })
+
   test("keeps recent pre-compaction turns across repeated compactions", async () => {
     const stub = llm()
     stub.push(reply("summary one"))

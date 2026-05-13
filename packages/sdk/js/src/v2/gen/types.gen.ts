@@ -2065,6 +2065,22 @@ export type Config = {
      * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
      */
     reserved?: number
+    /**
+     * Token count of recent tool outputs protected from pruning — outputs within this window are never cleared (default: 20000)
+     */
+    prune_protect?: number
+    /**
+     * Minimum tokens that must be prunable to trigger a pruning pass (default: 0)
+     */
+    prune_minimum?: number
+    /**
+     * Tool names whose outputs are never pruned (default: ["skill"])
+     */
+    protected_tools?: string[]
+    /**
+     * Path to a file containing a custom compaction summary prompt. If set, its content replaces the built-in prompt template.
+     */
+    prompt_file?: string
   }
   experimental?: {
     disable_paste_summary?: boolean

@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Context 管理机制 — Kilocode Wiki</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232638;
+      --border: #2e3148;
+      --accent: #7c8ff7;
+      --accent2: #56cfb2;
+      --warn: #f0a05a;
+      --danger: #e06c75;
+      --text: #cdd6f4;
+      --text-dim: #7f849c;
+      --code-bg: #181b2e;
+      --tag-green: #1e3a2f;
+      --tag-green-fg: #56cfb2;
+      --tag-yellow: #3a2e14;
+      --tag-yellow-fg: #f0a05a;
+      --tag-red: #3a1a1e;
+      --tag-red-fg: #e06c75;
+      --tag-blue: #1a2440;
+      --tag-blue-fg: #7c8ff7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 15px;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+    nav {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    nav h2 {
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 0 20px 10px;
+    }
+    nav a {
+      display: block;
+      padding: 6px 20px;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 13.5px;
+      border-left: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--accent); border-left-color: var(--accent); }
+    nav .section { margin-top: 18px; }
+
+    main {
+      flex: 1;
+      max-width: 860px;
+      padding: 52px 48px 80px;
+      margin: 0 auto;
+    }
+
+    /* ── Typography ── */
+    h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 40px; }
+    h2 {
+      font-size: 19px; font-weight: 600; color: #fff;
+      margin: 52px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 15px; font-weight: 600; color: var(--accent); margin: 28px 0 10px; }
+    h4 { font-size: 13px; font-weight: 600; color: var(--text-dim); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .07em; }
+    p { margin-bottom: 14px; }
+    ul, ol { padding-left: 20px; margin-bottom: 14px; }
+    li { margin-bottom: 5px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #fff; font-weight: 600; }
+    em { color: var(--accent2); font-style: normal; }
+
+    /* ── Code ── */
+    code {
+      background: var(--code-bg);
+      color: var(--accent2);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+      overflow-x: auto;
+      margin: 16px 0 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    pre code { background: none; padding: 0; color: var(--text); }
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .num { color: #f78c6c; }
+    .cmt { color: #546e7a; font-style: italic; }
+    .fn  { color: #82aaff; }
+    .type { color: var(--accent2); }
+
+    /* ── Callouts ── */
+    .callout {
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 18px 0;
+      font-size: 14px;
+      border-left: 3px solid;
+    }
+    .callout.info  { background: var(--tag-blue);   border-color: var(--accent);  }
+    .callout.warn  { background: var(--tag-yellow);  border-color: var(--warn);    }
+    .callout.tip   { background: var(--tag-green);   border-color: var(--accent2); }
+    .callout.danger{ background: var(--tag-red);     border-color: var(--danger);  }
+    .callout-title { font-weight: 700; margin-bottom: 4px; }
+    .callout.info  .callout-title { color: var(--accent);  }
+    .callout.warn  .callout-title { color: var(--warn);    }
+    .callout.tip   .callout-title { color: var(--accent2); }
+    .callout.danger .callout-title { color: var(--danger); }
+
+    /* ── Tags / badges ── */
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      padding: 1px 7px;
+      border-radius: 12px;
+      vertical-align: middle;
+    }
+    .tag.green  { background: var(--tag-green);  color: var(--tag-green-fg); }
+    .tag.yellow { background: var(--tag-yellow); color: var(--tag-yellow-fg);}
+    .tag.red    { background: var(--tag-red);    color: var(--tag-red-fg);   }
+    .tag.blue   { background: var(--tag-blue);   color: var(--tag-blue-fg);  }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 20px; font-size: 13.5px; }
+    th {
+      text-align: left;
+      padding: 9px 14px;
+      background: var(--surface2);
+      color: var(--text-dim);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface); }
+
+    /* ── Diagrams ── */
+    .diagram {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 16px 0 20px;
+      white-space: pre;
+      color: var(--text);
+    }
+    .diagram .hl  { color: var(--accent); }
+    .diagram .hl2 { color: var(--accent2); }
+    .diagram .dim { color: var(--text-dim); }
+    .diagram .warn { color: var(--warn); }
+
+    /* ── File path chip ── */
+    .filepath {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 10px;
+      font-family: monospace; font-size: 12px; color: var(--text-dim);
+      margin: 2px 0;
+    }
+    .filepath::before { content: "📄"; font-size: 11px; }
+
+    /* ── Section divider ── */
+    hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ── Flow steps ── */
+    .steps { counter-reset: step; list-style: none; padding: 0; }
+    .steps li {
+      counter-increment: step;
+      display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;
+    }
+    .steps li::before {
+      content: counter(step);
+      flex-shrink: 0;
+      width: 24px; height: 24px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 50%;
+      font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Sidebar ── -->
+<nav>
+  <h2>Context 管理</h2>
+  <a href="#overview" class="active">概述</a>
+  <a href="#context-anatomy">Context 组成解剖</a>
+
+  <div class="section">
+    <h2>两层策略</h2>
+    <a href="#pruning">Pruning（修剪）</a>
+    <a href="#compaction">Compaction（摘要压缩）</a>
+  </div>
+
+  <div class="section">
+    <h2>核心流程</h2>
+    <a href="#overflow">溢出检测</a>
+    <a href="#select">Tail 选择算法</a>
+    <a href="#summary-gen">摘要生成</a>
+    <a href="#filter">历史过滤</a>
+  </div>
+
+  <div class="section">
+    <h2>工具输出处理</h2>
+    <a href="#tool-trunc">实时截断</a>
+    <a href="#tool-prune">Prune 清除</a>
+  </div>
+
+  <div class="section">
+    <h2>配置参考</h2>
+    <a href="#config">kilo.jsonc 配置项</a>
+    <a href="#commands">Slash 命令</a>
+    <a href="#token-est">Token 估算</a>
+  </div>
+
+  <div class="section">
+    <h2>已知限制</h2>
+    <a href="#limits">当前限制</a>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<main>
+
+<h1>Context 管理机制</h1>
+<p class="subtitle">Kilocode 如何在有限上下文窗口内保持长程会话的有效性 · 基于源码的完整技术说明</p>
+
+<!-- ════════════════════════════ OVERVIEW ════════════════════════════ -->
+<h2 id="overview">概述</h2>
+
+<p>LLM 的上下文窗口是有限的。随着对话推进，历史消息、工具调用输出、系统提示词会不断累积，最终超出模型限制。Kilocode 采用<strong>双层策略</strong>管理这一问题：</p>
+
+<ul>
+  <li><strong>Pruning（轻量修剪）</strong> — 每轮对话结束后运行，清除旧工具调用输出，释放少量空间。</li>
+  <li><strong>Compaction（摘要压缩）</strong> — 接近上下文上限时触发，将大段历史压缩成结构化摘要，大幅降低占用。</li>
+</ul>
+
+<div class="callout info">
+  <div class="callout-title">关键认知</div>
+  Compaction 替换的只是<strong>历史（HEAD）部分</strong>，系统提示词、工具定义和最近几轮（Tail）始终原文保留。
+  因此 compact 后的 context 大小 ≠ 摘要大小，而是 <em>系统层固定开销 + 摘要 + Tail</em>。
+</div>
+
+<!-- ════════════════════════════ ANATOMY ════════════════════════════ -->
+<h2 id="context-anatomy">Context 组成解剖</h2>
+
+<p>每次向模型发送请求时，context 由以下部分叠加而成：</p>
+
+<div class="diagram"><span class="hl">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="hl">│</span> <span class="hl2">System Prompt</span>（每轮固定发送，不参与压缩）          <span class="dim">~10–16k tokens</span> <span class="hl">│</span>
+<span class="hl">├─────────────────────────────────────────────────────────────┤</span>
+<span class="hl">│</span> <span class="hl2">Tool Definitions</span>（所有工具 schema，每轮重发）         <span class="dim">~2–5k tokens</span>  <span class="hl">│</span>
+<span class="hl">├─────────────────────────────────────────────────────────────┤</span>
+<span class="hl">│</span> <span class="hl2">Editor Context</span>（打开的文件、可见 tab，每轮注入）     <span class="dim">~1–3k tokens</span>  <span class="hl">│</span>
+<span class="hl">├─────────────────────────────────────────────────────────────┤</span>
+<span class="hl">│</span> <span class="warn">Compaction Summary</span>（HEAD 被压缩后的替换物）         <span class="dim">~0.5–2k tokens</span> <span class="hl">│</span>
+<span class="hl">├─────────────────────────────────────────────────────────────┤</span>
+<span class="hl">│</span> <span class="warn">Tail Turns</span>（最近 N 轮原文保留，可配置）              <span class="dim">~10–60k tokens</span> <span class="hl">│</span>
+<span class="hl">├─────────────────────────────────────────────────────────────┤</span>
+<span class="hl">│</span> <span class="hl2">Current Turn</span>（当前用户输入）                         <span class="dim">~0.1–5k tokens</span> <span class="hl">│</span>
+<span class="hl">└─────────────────────────────────────────────────────────────┘</span></div>
+
+<p>新建会话的基础开销（系统提示词 + 工具定义 + 编辑器上下文）通常在 <strong>14–24k tokens</strong>，这是无论如何都无法消除的固定成本。</p>
+
+<!-- ════════════════════════════ PRUNING ════════════════════════════ -->
+<h2 id="pruning">Pruning（轻量修剪）</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/session/compaction.ts</span>
+  &nbsp;<code>prune()</code>
+</p>
+
+<p>Pruning 是一个<strong>每轮结束后异步执行</strong>的轻量过程，只清除旧工具输出的文本内容，不删除消息结构本身。</p>
+
+<h3>算法流程</h3>
+<ol class="steps">
+  <li>从最新消息向历史方向扫描，<strong>跳过最近 2 轮</strong>（不剪最近内容）。</li>
+  <li>遇到 compaction summary 消息时立即停止（已压缩区域不再处理）。</li>
+  <li>遇到已被标记 <code>compacted</code> 的 tool part 时立即停止。</li>
+  <li>累积扫描到的 tool output 估算 token 数。<br>超过 <code>PRUNE_PROTECT</code>（40,000 tokens）后，将之后的旧 tool output 加入待剪列表。</li>
+  <li>若待剪总量 &gt; <code>PRUNE_MINIMUM</code>（20,000 tokens），才真正执行：<br>
+    将每条旧 tool part 的 <code>state.time.compacted</code> 置为当前时间戳，持久化到存储。</li>
+</ol>
+
+<h3>关键常量</h3>
+<table>
+  <thead><tr><th>常量</th><th>值</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td><code>PRUNE_PROTECT</code></td><td>40,000 tokens</td><td>最近多少 token 的 tool output 受保护，不会被剪</td></tr>
+    <tr><td><code>PRUNE_MINIMUM</code></td><td>20,000 tokens</td><td>至少要能剪这么多，才实际执行（避免频繁小操作）</td></tr>
+    <tr><td><code>PRUNE_PROTECTED_TOOLS</code></td><td><code>["skill"]</code></td><td>这些工具的输出永远不被剪</td></tr>
+  </tbody>
+</table>
+
+<h3>剪除后的表现</h3>
+<p>被剪的 tool output 在下次构造 prompt 时会被替换为：</p>
+<pre><code><span class="str">"[Old tool result content cleared]"</span></code></pre>
+
+<div class="callout warn">
+  <div class="callout-title">当前限制</div>
+  Pruning 按时间顺序剪旧的（无论内容价值），没有优先级排序。
+  一个包含关键错误信息的短输出，可能比一堆无意义日志更早被剪。
+</div>
+
+<!-- ════════════════════════════ COMPACTION ════════════════════════════ -->
+<h2 id="compaction">Compaction（摘要压缩）</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/session/compaction.ts</span>
+</p>
+
+<p>Compaction 是重量级操作，将整段历史（HEAD）替换为结构化摘要，大幅节省 token。它由一个专属 compaction agent 完成，可配置为使用不同（通常更便宜）的模型。</p>
+
+<!-- ── Overflow Detection ── -->
+<h2 id="overflow">溢出检测</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/session/overflow.ts</span>
+</p>
+
+<p>每轮 LLM 回复完成后，检查 API 返回的真实 token 计数：</p>
+
+<pre><code><span class="cmt">// 使用 API 返回的真实 token 数，不是估算值</span>
+<span class="kw">const</span> count = tokens.total <span class="kw">||</span>
+  tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+
+<span class="kw">const</span> usable = model.limit.input
+  ? model.limit.input - reserved          <span class="cmt">// 有独立 input limit 的模型</span>
+  : context_window - max_output_tokens    <span class="cmt">// 其他模型</span>
+
+<span class="kw">return</span> count >= usable                    <span class="cmt">// true → 触发 compaction</span></code></pre>
+
+<table>
+  <thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>reserved</code></td><td><code>min(20000, max_output_tokens)</code></td><td>触发前预留的安全缓冲，可通过 <code>compaction.reserved</code> 覆盖</td></tr>
+    <tr><td>context = 0 的模型</td><td>—</td><td>跳过溢出检测（如自定义模型）</td></tr>
+  </tbody>
+</table>
+
+<div class="callout tip">
+  <div class="callout-title">溢出检测精度说明</div>
+  溢出检测使用 API 回传的真实 token 数，<strong>不受</strong> chars/4 估算精度的影响。
+  中文用户无需担心"该触发时没触发"的问题。
+</div>
+
+<!-- ── Tail Selection ── -->
+<h2 id="select">Tail 选择算法</h2>
+
+<p>在生成摘要之前，系统需要决定哪些最近的消息保留为"Tail"（原文保留），哪些送入摘要模型（HEAD）。</p>
+
+<div class="diagram"><span class="cmt">完整会话历史（旧 → 新）</span>
+
+<span class="dim">msg[0]  user   "初始任务"</span>
+<span class="dim">msg[1]  asst   [tool calls...]</span>
+<span class="dim">msg[2]  user   "继续"</span>
+<span class="dim">msg[3]  asst   [more tools...]</span>
+<span class="dim">... 若干轮 ...</span>
+<span class="hl">msg[N-4] user  "倒数第2轮"</span>   ←── tail_turns=2 时，从这里开始是 Tail
+<span class="hl">msg[N-3] asst  [...]</span>
+<span class="hl">msg[N-2] user  "最新一轮"</span>
+<span class="hl">msg[N-1] asst  [...]</span>
+<span class="hl2">msg[N]   user  (compaction 触发消息)</span>
+
+<span class="dim">──────────────────────────────────────────────</span>
+<span class="warn">HEAD</span><span class="dim">: msg[0] ~ msg[N-5]  → 全部送入摘要模型</span>
+<span class="hl">TAIL</span><span class="dim">: msg[N-4] ~ msg[N]  → 原文保留，不压缩</span></div>
+
+<h3>选择逻辑（<code>select()</code>）</h3>
+<ol class="steps">
+  <li>计算 <strong>Tail token 预算</strong>：<br>
+    <code>preserve_recent_tokens</code> 配置项，默认 <code>clamp(usable × 25%, 2000, 8000)</code>。</li>
+  <li>取最近 <code>tail_turns</code>（默认 2）个用户轮次。</li>
+  <li>从最新轮往前装，每轮估算 token 数（<em>注意：此处用估算值，非真实值</em>）。</li>
+  <li>若某轮整体放不下，尝试 <code>splitTurn()</code>：从该轮中间截断，保留能放下的后半段。</li>
+  <li>确定 <code>tail_start_id</code>（Tail 起始消息 ID），存入 CompactionPart。</li>
+</ol>
+
+<div class="callout warn">
+  <div class="callout-title">估算精度影响 Tail 边界</div>
+  Tail 选择用的是 <code>Token.estimate()</code>（基于字符权重），不是 API 真实值。
+  中文内容修正后（每汉字 ≈ 1 token），精度已大幅提升，但仍是估算。
+</div>
+
+<!-- ── Summary Generation ── -->
+<h2 id="summary-gen">摘要生成</h2>
+
+<p>HEAD 部分（待压缩的历史消息）在送入摘要模型之前经过以下预处理：</p>
+
+<ul>
+  <li><strong>媒体剥离</strong>：图片等附件替换为 <code>[Attached image/jpeg: filename]</code> 文本占位符。</li>
+  <li><strong>工具输出截断</strong>：每条 tool output 截断到 2,000 字符（<code>TOOL_OUTPUT_MAX_CHARS</code>）。</li>
+  <li><strong>已压缩部分过滤</strong>：上轮 compaction 之前的 hidden 消息不重复处理。</li>
+</ul>
+
+<h3>摘要提示词模板</h3>
+
+<p>输出格式严格按照以下 8 个区块，LLM 必须保持顺序、保留所有区块：</p>
+
+<pre><code>## Goal
+- [单句任务描述]
+
+## Constraints &amp; Preferences
+- [用户约束、偏好、规范]
+
+## Progress
+### Done        - [已完成工作]
+### In Progress - [进行中]
+### Blocked     - [阻塞项]
+
+## Key Decisions
+- [决策及原因]
+
+## Next Steps
+- [有序的下一步行动]
+
+## Critical Context
+- [重要技术事实、错误、开放问题]
+
+## Relevant Files
+- [文件路径: 为何重要]</code></pre>
+
+<h3>增量更新模式</h3>
+
+<p>若会话中已存在上一次的 compaction summary，新摘要不从零开始，而是<strong>基于旧摘要更新</strong>：</p>
+
+<pre><code><span class="str">"Update the anchored summary below using the conversation history above.
+Preserve still-true details, remove stale details, and merge in the new facts."</span>
+&lt;previous-summary&gt;...&lt;/previous-summary&gt;</code></pre>
+
+<!-- ── Filter ── -->
+<h2 id="filter">历史过滤（<code>filterCompacted</code>）</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/session/message-v2.ts</span>
+  &nbsp;<code>filterCompacted()</code>
+</p>
+
+<p>每次构造 prompt 时，不是把所有消息全部发给 LLM，而是经过过滤：</p>
+
+<ol class="steps">
+  <li>从最新消息向历史方向遍历。</li>
+  <li>遇到已完成的 compaction user 消息（<code>completed</code> 集合中）：
+    <ul>
+      <li>若 <code>tail_start_id</code> 存在（<code>/compact</code>）：跳到 tail 起点继续收集，忽略 HEAD。</li>
+      <li>若 <code>tail_start_id</code> 为 <code>undefined</code>（<code>/compact-all</code>）：立即停止，HEAD 完全丢弃。</li>
+    </ul>
+  </li>
+  <li>最终结果 = Tail 消息 + compaction 消息对（摘要）+ 当前轮。</li>
+</ol>
+
+<!-- ════════════════════════════ TOOL TRUNCATION ════════════════════════════ -->
+<h2 id="tool-trunc">工具输出实时截断</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/tool/truncate.ts</span>
+</p>
+
+<p>工具执行完毕后、结果写入 context 之前，输出大小被检查并按需截断：</p>
+
+<table>
+  <thead><tr><th>参数</th><th>默认值</th><th>配置项</th></tr></thead>
+  <tbody>
+    <tr><td>最大行数</td><td>2,000 行</td><td><code>tool_output.max_lines</code></td></tr>
+    <tr><td>最大字节数</td><td>50,000 bytes（~50 KB）</td><td><code>tool_output.max_bytes</code></td></tr>
+    <tr><td>截断方向</td><td><code>head</code>（保留开头）</td><td>每次调用可覆盖</td></tr>
+  </tbody>
+</table>
+
+<p>超限时行为：</p>
+<ol>
+  <li>将完整输出写入 <code>TRUNCATION_DIR</code> 下的临时文件（7 天后自动清理）。</li>
+  <li>返回截断预览 + 提示信息，引导 LLM 用 <code>Grep</code> / <code>Read(offset, limit)</code> 查看完整内容。</li>
+  <li>若 agent 有 Task 工具权限，提示改为委托子 agent 处理。</li>
+</ol>
+
+<h2 id="tool-prune">Pruning 对工具输出的处理</h2>
+
+<p>Pruning 发生在工具输出已经写入 context 之后，属于<strong>事后清理</strong>。被 prune 的 tool part 满足：</p>
+<ul>
+  <li>状态为 <code>completed</code></li>
+  <li>工具名不在 <code>PRUNE_PROTECTED_TOOLS</code>（<code>["skill"]</code>）中</li>
+  <li>未被之前的 compaction 标记过</li>
+  <li>在距当前 40,000 estimated tokens 之外的旧区域</li>
+</ul>
+
+<!-- ════════════════════════════ CONFIG ════════════════════════════ -->
+<h2 id="config">kilo.jsonc 配置参考</h2>
+
+<pre><code>{
+  <span class="str">"compaction"</span>: {
+    <span class="cmt">// 是否开启自动压缩（溢出时触发）</span>
+    <span class="str">"auto"</span>: <span class="kw">true</span>,
+
+    <span class="cmt">// 是否开启 pruning</span>
+    <span class="str">"prune"</span>: <span class="kw">true</span>,
+
+    <span class="cmt">// 保留最近 N 个用户轮次原文（0 = 全部压缩，等同于 /compact-all）</span>
+    <span class="str">"tail_turns"</span>: <span class="num">2</span>,
+
+    <span class="cmt">// Tail 的 token 预算（估算值）</span>
+    <span class="cmt">// 默认: clamp(usable × 25%, 2000, 8000)</span>
+    <span class="str">"preserve_recent_tokens"</span>: <span class="num">6000</span>,
+
+    <span class="cmt">// 触发压缩前预留的安全缓冲（tokens）</span>
+    <span class="cmt">// 默认: min(20000, max_output_tokens)</span>
+    <span class="str">"reserved"</span>: <span class="num">16000</span>
+  },
+
+  <span class="str">"tool_output"</span>: {
+    <span class="cmt">// 单次工具输出最大行数（超出后截断到文件）</span>
+    <span class="str">"max_lines"</span>: <span class="num">2000</span>,
+
+    <span class="cmt">// 单次工具输出最大字节数</span>
+    <span class="str">"max_bytes"</span>: <span class="num">51200</span>
+  }
+}</code></pre>
+
+<div class="callout tip">
+  <div class="callout-title">为长程任务推荐的配置</div>
+  长程任务（大型重构、多文件修改）中，如果下一步与最近几轮关系不大，可以把 <code>tail_turns</code> 调低到 <code>1</code> 或 <code>0</code>，
+  或在需要时手动执行 <code>/compact-all</code> 彻底清空 tail。
+</div>
+
+<!-- ════════════════════════════ COMMANDS ════════════════════════════ -->
+<h2 id="commands">Slash 命令</h2>
+
+<table>
+  <thead><tr><th>命令</th><th>行为</th><th>Tail 保留</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/compact</code></td>
+      <td>手动触发压缩，使用 <code>kilo.jsonc</code> 中的 <code>tail_turns</code> 配置（默认 2）</td>
+      <td><span class="tag green">保留最近 N 轮</span></td>
+    </tr>
+    <tr>
+      <td><code>/compact-all</code></td>
+      <td>压缩全部历史，<strong>包括 tail</strong>（等效于 <code>tail_turns=0</code>）</td>
+      <td><span class="tag red">不保留</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>两个命令执行后均不会自动发起下一轮对话（<code>auto=false</code>），等待用户输入。</p>
+
+<!-- ════════════════════════════ TOKEN EST ════════════════════════════ -->
+<h2 id="token-est">Token 估算</h2>
+
+<p>
+  <span class="filepath">packages/opencode/src/util/token.ts</span>
+  &nbsp;<code>Token.estimate()</code>
+</p>
+
+<p>估算仅用于 <strong>Tail 选择</strong> 和 <strong>Pruning</strong> 中的内部预算计算，不影响溢出检测（后者用 API 真实值）。</p>
+
+<table>
+  <thead><tr><th>字符类型</th><th>估算方式</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>ASCII / Latin</td>
+      <td>4 chars → 1 token</td>
+      <td>与主流 tokenizer 吻合</td>
+    </tr>
+    <tr>
+      <td>CJK 汉字（U+4E00–U+9FFF 等）</td>
+      <td>1 char → 1 token</td>
+      <td>修正前为 0.25 token，低估 4–6×</td>
+    </tr>
+    <tr>
+      <td>日文平假名 / 片假名</td>
+      <td>1 char → 1 token</td>
+      <td>同 CJK 处理</td>
+    </tr>
+    <tr>
+      <td>韩文谚文</td>
+      <td>1 char → 1 token</td>
+      <td>同 CJK 处理</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>覆盖的 Unicode 区段：</p>
+<pre><code>U+4E00–U+9FFF   CJK 统一表意文字（常用）
+U+3400–U+4DBF   CJK 扩展 A
+U+20000–U+2A6DF CJK 扩展 B（生僻字，代理对）
+U+F900–U+FAFF   CJK 兼容象形字
+U+3040–U+309F   平假名
+U+30A0–U+30FF   片假名
+U+AC00–U+D7AF   韩文音节
+U+1100–U+11FF   韩文字母</code></pre>
+
+<!-- ════════════════════════════ LIMITS ════════════════════════════ -->
+<h2 id="limits">已知限制</h2>
+
+<table>
+  <thead><tr><th>限制</th><th>影响</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Tail 选择用估算 token 数，非真实值</td>
+      <td>Tail 实际大小可能偏离预算（已修正 CJK 部分）</td>
+      <td><span class="tag yellow">部分修复</span></td>
+    </tr>
+    <tr>
+      <td>HEAD 工具输出截断到 2,000 字符</td>
+      <td>摘要 LLM 看到的工具输出可能残缺，影响摘要质量</td>
+      <td><span class="tag red">待优化</span></td>
+    </tr>
+    <tr>
+      <td>Pruning 无优先级，只按时间顺序</td>
+      <td>重要短输出可能先于无用长日志被剪</td>
+      <td><span class="tag red">待优化</span></td>
+    </tr>
+    <tr>
+      <td>无跨会话记忆</td>
+      <td>每个 session 独立，不继承上一个 session 的 summary</td>
+      <td><span class="tag blue">设计选择</span></td>
+    </tr>
+    <tr>
+      <td>Compaction agent 摘要提示词不可在 UI 中自定义</td>
+      <td>可通过 <code>compaction.prompt_file</code> 指定外部文件覆盖默认模板</td>
+      <td><span class="tag green">已实现</span></td>
+    </tr>
+    <tr>
+      <td>Pruning 阈值硬编码，无法调整</td>
+      <td>可通过 <code>compaction.prune_protect</code>、<code>prune_minimum</code>、<code>protected_tools</code> 配置</td>
+      <td><span class="tag green">已实现</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<p style="color: var(--text-dim); font-size: 12px;">
+  基于源码：<code>packages/opencode/src/session/compaction.ts</code>、
+  <code>overflow.ts</code>、<code>message-v2.ts</code>、<code>prompt.ts</code>、
+  <code>tool/truncate.ts</code>、<code>util/token.ts</code>
+</p>
+
+</main>
+</div>
+
+<script>
+  // Highlight active nav link on scroll
+  const links = document.querySelectorAll('nav a[href^="#"]')
+  const headings = [...document.querySelectorAll('main h2[id]')]
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'))
+        const a = document.querySelector(`nav a[href="#${e.target.id}"]`)
+        if (a) a.classList.add('active')
+      }
+    })
+  }, { rootMargin: '-20% 0px -70% 0px' })
+  headings.forEach(h => observer.observe(h))
+</script>
+</body>
+</html>

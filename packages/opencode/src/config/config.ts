@@ -290,6 +290,21 @@ export const Info = Schema.Struct({
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),
+      prune_protect: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Token count of recent tool outputs protected from pruning — outputs within this window are never cleared (default: 20000)",
+      }),
+      prune_minimum: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Minimum tokens that must be prunable to trigger a pruning pass (default: 0, meaning prune whenever anything qualifies)",
+      }),
+      protected_tools: Schema.optional(Schema.Array(Schema.String)).annotate({
+        description: 'Tool names whose outputs are never pruned (default: ["skill"])',
+      }),
+      prompt_file: Schema.optional(Schema.String).annotate({
+        description:
+          "Path to a file containing a custom compaction summary prompt. If set, its content replaces the built-in prompt template.",
+      }),
     }),
   ),
   experimental: Schema.optional(
