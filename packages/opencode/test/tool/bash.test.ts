@@ -81,6 +81,16 @@ const fill = (mode: "lines" | "bytes", n: number) => {
   if (PS.has(sh())) return `& ${text}`
   return text
 }
+
+const script = (code: string) => {
+  const text = `${bin} -e ${evalarg(code)}`
+  if (PS.has(sh())) return `& ${text}`
+  return text
+}
+
+const marked = (n: number) =>
+  script(`process.stdout.write("BEGIN-" + "a".repeat(${n}) + "-END")`)
+
 const glob = (p: string) =>
   process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
 
@@ -1132,6 +1142,140 @@ describe("tool.bash abort", () => {
 })
 
 describe("tool.bash truncation", () => {
+  each("all capture mirrors default truncation behaviour", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const lineCount = Truncate.MAX_LINES + 500
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: fill("lines", lineCount),
+              description: "Capture all output with truncation",
+              capture: "all",
+            },
+            ctx,
+          ),
+        )
+        mustTruncate(result)
+        expect(result.output).toMatch(/\.\.\.output truncated\.\.\./)
+        expect(result.output).toMatch(/Full output saved to:\s+\S+/)
+      },
+    })
+  })
+
+  each("none capture suppresses command output", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: "echo hidden",
+              description: "Suppress output",
+              capture: "none",
+            },
+            ctx,
+          ),
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect((result.metadata as { truncated?: boolean }).truncated).toBe(false)
+        expect(result.output).toBe("")
+      },
+    })
+  })
+
+  each("head capture truncates a huge first line", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: marked(Truncate.MAX_BYTES + 10_000),
+              description: "Capture head of huge line",
+              capture: "head:1",
+            },
+            ctx,
+          ),
+        )
+        mustTruncate(result)
+        expect(result.output).toContain("BEGIN-")
+        expect(result.output).toContain("Full output saved to:")
+        expect(result.output).not.toContain("-END")
+      },
+    })
+  })
+
+  each("head capture respects requested line count without trailing newline", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: script('process.stdout.write("a\\nb")'),
+              description: "Capture one line",
+              capture: "head:1",
+            },
+            ctx,
+          ),
+        )
+        expect((result.metadata as { truncated?: boolean }).truncated).toBe(false)
+        expect(result.output).toBe("a")
+      },
+    })
+  })
+
+  each("tail capture returns the requested trailing lines", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: script('process.stdout.write("1\\n2\\n3\\n4\\n5")'),
+              description: "Capture trailing lines",
+              capture: "tail:2",
+            },
+            ctx,
+          ),
+        )
+        expect((result.metadata as { truncated?: boolean }).truncated).toBe(true)
+        expect((result.metadata as { outputPath?: string }).outputPath).toBeTruthy()
+        expect(result.output).toBe("4\n5")
+      },
+    })
+  })
+
+  each("sandwich capture keeps truncation metadata for huge single-line output", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await initBash()
+        const result = await Effect.runPromise(
+          bash.execute(
+            {
+              command: marked(Truncate.MAX_BYTES + 10_000),
+              description: "Capture both ends of huge line",
+              capture: "sandwich:1",
+            },
+            ctx,
+          ),
+        )
+        mustTruncate(result)
+        expect(result.output).toContain("BEGIN-")
+        expect(result.output).toContain("-END")
+        expect(result.output).toContain("Full output saved to:")
+      },
+    })
+  })
+
   test("truncates output exceeding line limit", async () => {
     await Instance.provide({
       directory: projectRoot,

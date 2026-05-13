@@ -70,6 +70,16 @@ export const Parameters = Schema.Struct({
       "Recommended: a clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
     // kilocode_change end
   }),
+  // kilocode_change start — capture mode
+  capture: Schema.optional(Schema.String).annotate({
+    description: `Controls how command output is captured and returned. Default: "all".
+- "all": full output; if large, saves to a file and returns a tail preview with the file path
+- "none": discards all output, only returns the exit code 
+- "head:N": returns only the first N lines
+- "tail:N": returns only the last N lines
+- "sandwich:N": returns first N lines + last N lines with an omission count in between`,
+  }),
+  // kilocode_change end
 })
 
 type Part = {
@@ -272,6 +282,120 @@ function tail(text: string, maxLines: number, maxBytes: number) {
   }
 }
 
+// kilocode_change start — capture mode
+type CaptureMode =
+  | { kind: "all" }
+  | { kind: "none" }
+  | { kind: "head"; lines: number }
+  | { kind: "tail"; lines: number }
+  | { kind: "sandwich"; lines: number }
+
+type HeadState = {
+  lines: string[]
+  carry: string
+  bytes: number
+  cut: boolean
+  done: boolean
+}
+
+function parseCapture(capture: string | undefined): CaptureMode {
+  if (!capture || capture === "all") return { kind: "all" }
+  if (capture === "none") return { kind: "none" }
+  const m = /^(head|tail|sandwich):(\d+)$/.exec(capture)
+  if (m) return { kind: m[1] as "head" | "tail" | "sandwich", lines: Math.max(1, parseInt(m[2], 10)) }
+  return { kind: "all" }
+}
+
+/** Keep last n lines of text; cut=true when lines were dropped. */
+function tailN(text: string, n: number): { text: string; cut: boolean } {
+  const lines = text.split("\n")
+  if (lines.length <= n) return { text, cut: false }
+  return { text: lines.slice(-n).join("\n"), cut: true }
+}
+
+function clip(text: string, maxBytes: number) {
+  const buf = Buffer.from(text, "utf-8")
+  if (buf.length <= maxBytes) return { text, cut: false }
+  let end = maxBytes
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
+  return { text: buf.subarray(0, end).toString("utf-8"), cut: true }
+}
+
+function lines(text: string) {
+  if (!text) return 0
+  const count = text.match(/\n/g)?.length ?? 0
+  return count + (text.endsWith("\n") ? 0 : 1)
+}
+
+function headAdd(input: { state: HeadState; chunk: string; limit: number; maxBytes: number }) {
+  const state = input.state
+  if (state.done) return
+
+  const parts = (state.carry + input.chunk).split("\n")
+  const tail = parts.pop() ?? ""
+  state.carry = ""
+
+  for (const line of parts) {
+    if (state.lines.length >= input.limit) {
+      state.done = true
+      return
+    }
+
+    const gap = state.lines.length > 0 ? 1 : 0
+    const room = input.maxBytes - state.bytes - gap
+    const size = Buffer.byteLength(line, "utf-8")
+
+    if (room <= 0) {
+      state.cut = true
+      state.done = true
+      return
+    }
+
+    if (size > room) {
+      state.carry = clip(line, room).text
+      state.cut = true
+      state.done = true
+      return
+    }
+
+    if (gap) state.bytes += 1
+    state.lines.push(line)
+    state.bytes += size
+
+    if (state.lines.length >= input.limit) {
+      state.done = true
+      return
+    }
+  }
+
+  if (!tail || state.lines.length >= input.limit) {
+    if (state.lines.length >= input.limit) state.done = true
+    return
+  }
+
+  const gap = state.lines.length > 0 ? 1 : 0
+  const room = input.maxBytes - state.bytes - gap
+  if (room <= 0) {
+    state.cut = true
+    state.done = true
+    return
+  }
+
+  const next = clip(tail, room)
+  state.carry = next.text
+  if (next.cut) {
+    state.cut = true
+    state.done = true
+  }
+}
+
+function headText(input: { state: HeadState; limit: number }) {
+  const state = input.state
+  if (state.lines.length >= input.limit || !state.carry) return state.lines.join("\n")
+  return [...state.lines, state.carry].join("\n")
+}
+// kilocode_change end
+
 const parse = Effect.fn("BashTool.parse")(function* (command: string, ps: boolean) {
   const tree = yield* Effect.promise(() => parser().then((p) => (ps ? p.ps : p.bash).parse(command)))
   if (!tree) throw new Error("Failed to parse command")
@@ -455,6 +579,7 @@ export const BashTool = Tool.define(
         env: NodeJS.ProcessEnv
         timeout: number
         description: string
+        capture: CaptureMode // kilocode_change
       },
       ctx: Tool.Context,
     ) {
@@ -469,6 +594,13 @@ export const BashTool = Tool.define(
       let cut = false
       let expired = false
       let aborted = false
+      // kilocode_change start — head/sandwich state
+      const captureMode = input.capture
+      const headState: HeadState = { lines: [], carry: "", bytes: 0, cut: false, done: false }
+      let totalBreaks = 0
+      let saw = false
+      let ended = false
+      // kilocode_change end
 
       yield* ctx.metadata({
         metadata: {
@@ -483,6 +615,10 @@ export const BashTool = Tool.define(
 
           yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
+              // kilocode_change start — none: consume stream but discard everything
+              if (captureMode.kind === "none") return Effect.void
+              // kilocode_change end
+
               const size = Buffer.byteLength(chunk, "utf-8")
               list.push({ text: chunk, size })
               used += size
@@ -491,6 +627,17 @@ export const BashTool = Tool.define(
                 if (!item) break
                 used -= item.size
                 cut = true
+              }
+
+              // Track bounded head preview before any early return below writes the
+              // chunk to disk, otherwise huge first chunks skip head/sandwich capture.
+              if (captureMode.kind === "head" || captureMode.kind === "sandwich") {
+                if (chunk) {
+                  saw = true
+                  totalBreaks += chunk.match(/\n/g)?.length ?? 0
+                  ended = chunk.endsWith("\n")
+                }
+                headAdd({ state: headState, chunk, limit: captureMode.lines, maxBytes: limits.maxBytes })
               }
 
               last = preview(last + chunk)
@@ -565,19 +712,66 @@ export const BashTool = Tool.define(
         )
       }
       if (aborted) meta.push("User aborted the command")
+
+      // kilocode_change start — build output according to capture mode
       const raw = list.map((item) => item.text).join("")
-      const end = tail(raw, limits.maxLines, limits.maxBytes)
-      if (end.cut) cut = true
-      if (!file && end.cut) {
-        file = yield* trunc.write(raw)
+      const save = Effect.fn("BashTool.saveOutput")(function* () {
+        if (file) return file
+        file = yield* trunc.write(full || raw)
+        return file
+      })
+      const streamCut = cut || Boolean(file)
+      const totalLines = saw ? totalBreaks + (ended ? 0 : 1) : 0
+      let output: string
+      let truncated = false
+
+      if (captureMode.kind === "none") {
+        output = ""
+        file = ""
+        truncated = false
+      } else if (captureMode.kind === "head") {
+        output = headText({ state: headState, limit: captureMode.lines })
+        if (headState.cut) {
+          const saved = yield* save()
+          output = [output, "...output truncated...", `Full output saved to: ${saved}`].filter(Boolean).join("\n\n")
+          truncated = true
+        } else {
+          file = ""
+        }
+      } else if (captureMode.kind === "tail") {
+        const end = tailN(raw, captureMode.lines)
+        output = end.text
+        if (end.cut) {
+          truncated = true
+          if (!file) file = yield* trunc.write(full || raw)
+        }
+      } else if (captureMode.kind === "sandwich") {
+        const first = headText({ state: headState, limit: captureMode.lines })
+        const tailEnd = tailN(raw, captureMode.lines)
+        const tailText = tailEnd.text
+        const omitted = Math.max(0, totalLines - lines(first) - lines(tailText))
+        if (omitted <= 0 && !streamCut && !headState.cut) {
+          output = raw
+          file = ""
+        } else {
+          const saved = yield* save()
+          const note = omitted > 0 ? `...${omitted} lines omitted...` : "...output truncated..."
+          output = [first, note, `Full output saved to: ${saved}`, tailText].filter(Boolean).join("\n\n")
+          truncated = true
+        }
+      } else {
+        // "all": existing behaviour
+        const end = tail(raw, limits.maxLines, limits.maxBytes)
+        truncated = end.cut
+        if (!file && end.cut) file = yield* trunc.write(full || raw)
+        output = end.text
+        if (truncated && file) {
+          output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
+        }
       }
 
-      let output = end.text
-      if (!output) output = "(no output)"
-
-      if (cut && file) {
-        output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
-      }
+      if (!output && captureMode.kind !== "none") output = "(no output)"
+      // kilocode_change end
 
       if (meta.length > 0) {
         output += "\n\n<bash_metadata>\n" + meta.join("\n") + "\n</bash_metadata>"
@@ -599,8 +793,8 @@ export const BashTool = Tool.define(
           output: last || preview(output),
           exit: code,
           description: input.description,
-          truncated: cut,
-          ...(cut && file ? { outputPath: file } : {}),
+          truncated,
+          ...(truncated && file ? { outputPath: file } : {}),
         },
         output,
       }
@@ -664,6 +858,7 @@ export const BashTool = Tool.define(
                   env: yield* shellEnv(ctx, cwd),
                   timeout,
                   description: params.description ?? params.command, // kilocode_change
+                  capture: parseCapture(params.capture), // kilocode_change
                 },
                 ctx,
               )
