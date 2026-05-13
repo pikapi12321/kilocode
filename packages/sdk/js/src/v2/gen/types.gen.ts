@@ -2070,17 +2070,21 @@ export type Config = {
      */
     prune_protect?: number
     /**
-     * Minimum tokens that must be prunable to trigger a pruning pass (default: 0)
+     * Minimum tokens that must be prunable to trigger a pruning pass (default: 0, meaning prune whenever anything qualifies)
      */
     prune_minimum?: number
     /**
      * Tool names whose outputs are never pruned (default: ["skill"])
      */
-    protected_tools?: string[]
+    protected_tools?: Array<string>
     /**
      * Path to a file containing a custom compaction summary prompt. If set, its content replaces the built-in prompt template.
      */
     prompt_file?: string
+    /**
+     * Cap the usable context window. Compaction triggers when token usage reaches this value, regardless of the model's actual limit. Useful for cost control on large-context models (e.g. set 200000 to compact at 200k even on a 1M-context model).
+     */
+    max_context_tokens?: number
   }
   experimental?: {
     disable_paste_summary?: boolean

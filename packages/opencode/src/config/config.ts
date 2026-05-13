@@ -290,6 +290,10 @@ export const Info = Schema.Struct({
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),
+      max_context_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Cap the usable context window. Compaction triggers when token usage reaches this value, regardless of the model's actual limit. Useful for cost control on large-context models (e.g. set 200000 to compact at 200k even on a 1M-context model).",
+      }),
       prune_protect: Schema.optional(NonNegativeInt).annotate({
         description:
           "Token count of recent tool outputs protected from pruning — outputs within this window are never cleared (default: 20000)",
