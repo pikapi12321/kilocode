@@ -1216,6 +1216,11 @@ export class Agent implements ACPAgent {
         name: "compact",
         description: "compact the session",
       })
+    if (!names.has("compact-all"))
+      availableCommands.push({
+        name: "compact-all",
+        description: "compact the entire session history including recent turns (no tail preserved)",
+      })
 
     const mcpServers: Record<string, ConfigMCP.Info> = {}
     for (const server of params.mcpServers) {
@@ -1525,6 +1530,18 @@ export class Agent implements ACPAgent {
             directory,
             providerID: model.providerID,
             modelID: model.modelID,
+          },
+          { throwOnError: true },
+        )
+        break
+      case "compact-all":
+        await this.config.sdk.session.summarize(
+          {
+            sessionID,
+            directory,
+            providerID: model.providerID,
+            modelID: model.modelID,
+            tailTurns: 0,
           },
           { throwOnError: true },
         )

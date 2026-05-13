@@ -1466,6 +1466,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               sessionID,
               auto: task.auto,
               overflow: task.overflow,
+              tailTurns: task.tail_turns,
             })
             // kilocode_change start - compaction.process only returns "stop" after
             // setting ContextOverflowError on the summary message; surface as turn error

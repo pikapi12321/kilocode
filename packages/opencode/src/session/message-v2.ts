@@ -218,6 +218,7 @@ export const CompactionPart = Schema.Struct({
   auto: Schema.Boolean,
   overflow: Schema.optional(Schema.Boolean),
   tail_start_id: Schema.optional(MessageID),
+  tail_turns: Schema.optional(Schema.Number),
 })
   .annotate({ identifier: "CompactionPart" })
   .pipe(withStatics((s) => ({ zod: zod(s) })))

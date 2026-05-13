@@ -578,6 +578,7 @@ export const SessionRoutes = lazy(() =>
           providerID: ProviderID.zod,
           modelID: ModelID.zod,
           auto: z.boolean().optional().default(false),
+          tailTurns: z.number().int().min(0).optional(),
         }),
       ),
       async (c) =>
@@ -610,6 +611,7 @@ export const SessionRoutes = lazy(() =>
               modelID: body.modelID,
             },
             auto: body.auto,
+            tailTurns: body.tailTurns,
           })
           yield* prompt.loop({ sessionID })
           return true

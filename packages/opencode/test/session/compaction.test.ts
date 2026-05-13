@@ -1631,6 +1631,70 @@ describe("session.compaction.process", () => {
     })
   })
 
+  test("summarizes the full history when tailTurns is zero", async () => {
+    const stub = llm()
+    let captured = ""
+    stub.push(
+      reply("summary", (input) => {
+        captured = JSON.stringify(input.messages)
+      }),
+    )
+
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await svc.create({})
+        const u1 = await user(session.id, "older context")
+        const u2 = await user(session.id, "keep this turn")
+        const u3 = await user(session.id, "and this one too")
+        await SessionCompaction.create({
+          sessionID: session.id,
+          agent: "build",
+          model: ref,
+          auto: false,
+          tailTurns: 0,
+        })
+
+        const rt = liveRuntime(stub.layer, wide(), cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }))
+        try {
+          const msgs = await svc.messages({ sessionID: session.id })
+          const parent = msgs.at(-1)?.info.id
+          expect(parent).toBeTruthy()
+          await rt.runPromise(
+            SessionCompaction.Service.use((svc) =>
+              svc.process({
+                parentID: parent!,
+                messages: msgs,
+                sessionID: session.id,
+                auto: false,
+                tailTurns: 0,
+              }),
+            ),
+          )
+
+          const part = await lastCompactionPart(session.id)
+          expect(part?.type).toBe("compaction")
+          expect(part?.tail_turns).toBe(0)
+          expect(part?.tail_start_id).toBeUndefined()
+          expect(captured).toContain("older context")
+          expect(captured).toContain("keep this turn")
+          expect(captured).toContain("and this one too")
+
+          const filtered = MessageV2.filterCompacted(MessageV2.stream(session.id))
+          const ids = filtered.map((msg) => msg.info.id)
+
+          expect(ids).not.toContain(u1.id)
+          expect(ids).not.toContain(u2.id)
+          expect(ids).not.toContain(u3.id)
+          expect(filtered.some((msg) => msg.info.role === "assistant" && msg.info.summary)).toBe(true)
+        } finally {
+          await rt.dispose()
+        }
+      },
+    })
+  })
+
   test("anchors repeated compactions with the previous summary", async () => {
     const stub = llm()
     let captured = ""

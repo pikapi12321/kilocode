@@ -199,6 +199,7 @@ export interface Interface {
     sessionID: SessionID
     auto: boolean
     overflow?: boolean
+    tailTurns?: number
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
@@ -206,6 +207,7 @@ export interface Interface {
     model: { providerID: ProviderID; modelID: ModelID }
     auto: boolean
     overflow?: boolean
+    tailTurns?: number
   }) => Effect.Effect<void>
 }
 
@@ -251,8 +253,9 @@ export const layer: Layer.Layer<
       messages: MessageV2.WithParts[]
       cfg: Config.Info
       model: Provider.Model
+      tailTurns?: number
     }) {
-      const limit = input.cfg.compaction?.tail_turns ?? DEFAULT_TAIL_TURNS
+      const limit = input.tailTurns ?? input.cfg.compaction?.tail_turns ?? DEFAULT_TAIL_TURNS
       if (limit <= 0) return { head: input.messages, tail_start_id: undefined }
       const budget = preserveRecentBudget({ cfg: input.cfg, model: input.model })
       const all = turns(input.messages)
@@ -356,6 +359,7 @@ export const layer: Layer.Layer<
       sessionID: SessionID
       auto: boolean
       overflow?: boolean
+      tailTurns?: number
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -402,6 +406,7 @@ export const layer: Layer.Layer<
         messages: history.filter((_, index) => !hidden.has(index)),
         cfg,
         model,
+        tailTurns: input.tailTurns,
       })
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
@@ -580,6 +585,7 @@ export const layer: Layer.Layer<
       model: { providerID: ProviderID; modelID: ModelID }
       auto: boolean
       overflow?: boolean
+      tailTurns?: number
     }) {
       const msg = yield* session.updateMessage({
         id: MessageID.ascending(),
@@ -596,6 +602,7 @@ export const layer: Layer.Layer<
         type: "compaction",
         auto: input.auto,
         overflow: input.overflow,
+        tail_turns: input.tailTurns,
       })
       // kilocode_change start - keep auto-compaction markers visible during queued turns
       KiloSessionPromptQueue.retarget(input.sessionID, msg.id)
@@ -640,6 +647,7 @@ export const create = fn(
     model: z.object({ providerID: ProviderID.zod, modelID: ModelID.zod }),
     auto: z.boolean(),
     overflow: z.boolean().optional(),
+    tailTurns: z.number().int().min(0).optional(),
   }),
   (input) => runPromise((svc) => svc.create(input)),
 )

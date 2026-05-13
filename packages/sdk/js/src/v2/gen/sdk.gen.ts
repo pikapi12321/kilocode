@@ -2350,6 +2350,7 @@ export class Session2 extends HeyApiClient {
       providerID?: string
       modelID?: string
       auto?: boolean
+      tailTurns?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2364,6 +2365,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "providerID" },
             { in: "body", key: "modelID" },
             { in: "body", key: "auto" },
+            { in: "body", key: "tailTurns" },
           ],
         },
       ],
