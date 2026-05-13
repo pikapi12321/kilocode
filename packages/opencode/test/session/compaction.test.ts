@@ -1929,6 +1929,17 @@ describe("util.token.estimate", () => {
   test("returns 0 for empty string", () => {
     expect(Token.estimate("")).toBe(0)
   })
+
+  test("preserves the legacy estimate for non-CJK surrogate pairs", () => {
+    expect(Token.estimate("😀")).toBe(1)
+    expect(Token.estimate("😀😀")).toBe(1)
+  })
+
+  test("counts common CJK punctuation and full-width text at full weight", () => {
+    expect(Token.estimate("你好，世界")).toBe(5)
+    expect(Token.estimate("テスト。")).toBe(4)
+    expect(Token.estimate("ＡＢＣ１２３")).toBe(6)
+  })
 })
 
 describe("SessionNs.getUsage", () => {
