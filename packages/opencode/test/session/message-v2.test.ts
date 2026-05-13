@@ -195,6 +195,86 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("wraps summary assistant text with summary markers", async () => {
+    const userID = "m-user"
+    const assistantID = "m-summary"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "summarize",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: {
+          ...assistantInfo(assistantID, userID),
+          summary: true,
+          finish: "end_turn",
+        } as MessageV2.Assistant,
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "text",
+            text: "summary body",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "summarize" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "[SUMMARY_START — snapshot at compaction time, not current state]\n" },
+          { type: "text", text: "summary body" },
+          { type: "text", text: "\n[SUMMARY_END — turns below are the live session]" },
+        ],
+      },
+    ])
+  })
+
+  test("filters out empty summary assistants", async () => {
+    const userID = "m-user"
+    const assistantID = "m-summary-empty"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "summarize",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: {
+          ...assistantInfo(assistantID, userID),
+          summary: true,
+          finish: "end_turn",
+        } as MessageV2.Assistant,
+        parts: [] as MessageV2.Part[],
+      },
+    ]
+
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "summarize" }],
+      },
+    ])
+  })
+
   test("converts user text/file parts and injects compaction/subtask prompts", async () => {
     const messageID = "m-user"
 

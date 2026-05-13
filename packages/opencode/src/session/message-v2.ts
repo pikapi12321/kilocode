@@ -1060,6 +1060,16 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           })
         }
       }
+      if (msg.info.summary && assistantMessage.parts.length > 0) {
+        assistantMessage.parts.unshift({
+          type: "text",
+          text: "[SUMMARY_START — snapshot at compaction time, not current state]\n",
+        })
+        assistantMessage.parts.push({
+          type: "text",
+          text: "\n[SUMMARY_END — turns below are the live session]",
+        })
+      }
       if (assistantMessage.parts.length > 0) {
         result.push(assistantMessage)
         // Inject pending media as a user message for providers that don't support
