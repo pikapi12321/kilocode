@@ -1870,6 +1870,19 @@ export type Config = {
      */
     urls?: Array<string>
   }
+  /**
+   * Project-scoped files whose latest content is inlined into every prompt. Useful for persistent working memory (e.g. learnings.md, decisions.md) that the agent actively maintains across turns and sessions.
+   */
+  context_inline_files?: Array<{
+    /** Path to the file, relative to the project root. Must stay within the project worktree. */
+    path: string
+    /** Purpose of this file, shown to the LLM so it knows when and how to update it. */
+    description: string
+    /** Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file. */
+    max_tokens?: number
+    /** Target size after compression as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5. */
+    compress_ratio?: number
+  }>
   watcher?: {
     ignore?: Array<string>
   }

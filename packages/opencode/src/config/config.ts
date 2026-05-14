@@ -142,6 +142,31 @@ export const Info = Schema.Struct({
     description: "Command configuration, see https://opencode.ai/docs/commands",
   }),
   skills: Schema.optional(ConfigSkills.Info).annotate({ description: "Additional skill folder paths" }),
+  // kilocode_change start - inline project-scoped working memory files into each prompt
+  context_inline_files: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        path: Schema.String.annotate({
+          description: "Path to the file, relative to the project root. Must stay within the project worktree.",
+        }),
+        description: Schema.String.annotate({
+          description: "Purpose of this file, shown to the LLM so it knows when and how to update it.",
+        }),
+        max_tokens: Schema.optional(NonNegativeInt).annotate({
+          description:
+            "Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file.",
+        }),
+        compress_ratio: Schema.optional(Schema.Number).annotate({
+          description:
+            "Target size after compression, expressed as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5.",
+        }),
+      }),
+    ),
+  ).annotate({
+    description:
+      "Project-scoped files whose latest content is inlined into every prompt. Useful for persistent working memory (e.g. learnings.md, decisions.md) that the agent actively maintains across turns and sessions.",
+  }),
+  // kilocode_change end
   watcher: Schema.optional(
     Schema.Struct({
       ignore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),

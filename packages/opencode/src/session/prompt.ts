@@ -64,6 +64,7 @@ import { EffectBridge } from "@/effect/bridge"
 import { Token } from "@/util/token" // kilocode_change
 import { usable as usableContext } from "./overflow" // kilocode_change
 import * as SlidingWindow from "./sliding-window" // kilocode_change
+import { ContextInlineFiles } from "./context-inline-files" // kilocode_change
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1623,6 +1624,20 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const cfg = yield* config.get()
             const compactionCfg = cfg.compaction
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+            // kilocode_change start - inline persistent context files
+            const inlineFileSpecs = cfg.context_inline_files
+            if (inlineFileSpecs && inlineFileSpecs.length > 0) {
+              const ctx = yield* InstanceState.context
+              const root = ctx.worktree === "/" ? ctx.directory : ctx.worktree
+              const block = yield* Effect.promise(() =>
+                ContextInlineFiles.buildContextFilesBlock(
+                  inlineFileSpecs as Parameters<typeof ContextInlineFiles.buildContextFilesBlock>[0],
+                  root,
+                ),
+              )
+              if (block) system.push(block)
+            }
+            // kilocode_change end
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT) // kilocode_change
             // kilocode_change end
