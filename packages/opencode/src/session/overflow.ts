@@ -21,6 +21,7 @@ export function usable(input: { cfg: Config.Info; model: Provider.Model }) {
 
 export function isOverflow(input: { cfg: Config.Info; tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
   if (input.cfg.compaction?.auto === false) return false
+  if (input.cfg.compaction?.sliding_window) return false  // sliding window manages context without compaction
   if (input.model.limit.context === 0) return false
 
   const count =

@@ -2085,6 +2085,18 @@ export type Config = {
      * Cap the usable context window. Compaction triggers when token usage reaches this value, regardless of the model's actual limit. Useful for cost control on large-context models (e.g. set 200000 to compact at 200k even on a 1M-context model).
      */
     max_context_tokens?: number
+    /**
+     * Enable sliding-window context mode. On every API call, messages older than sliding_window_tokens are dropped and replaced with a truncation marker. Suited for repetitive tasks (e.g. iterative experiments) where history is recorded in files and old turns carry little value. Disables auto-compaction.
+     */
+    sliding_window?: boolean
+    /**
+     * Maximum tokens of recent messages to keep in sliding-window mode (default: 40000).
+     */
+    sliding_window_tokens?: number
+    /**
+     * Custom truncation marker text shown to the LLM when older messages are dropped in sliding-window mode.
+     */
+    sliding_window_marker?: string
   }
   experimental?: {
     disable_paste_summary?: boolean

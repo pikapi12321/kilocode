@@ -309,6 +309,18 @@ export const Info = Schema.Struct({
         description:
           "Path to a file containing a custom compaction summary prompt. If set, its content replaces the built-in prompt template.",
       }),
+      sliding_window: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Enable sliding-window context mode. On every API call, messages older than sliding_window_tokens are dropped and replaced with a truncation marker. Suited for repetitive tasks (e.g. iterative experiments) where history is recorded in files and old turns carry little value. Disables auto-compaction.",
+      }),
+      sliding_window_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Maximum tokens of recent messages to keep in sliding-window mode (default: 40000). Messages beyond this budget are truncated from the front and replaced with a marker.",
+      }),
+      sliding_window_marker: Schema.optional(Schema.String).annotate({
+        description:
+          "Custom truncation marker text shown to the LLM when older messages are dropped in sliding-window mode.",
+      }),
     }),
   ),
   experimental: Schema.optional(

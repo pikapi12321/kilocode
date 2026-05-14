@@ -61,6 +61,9 @@ import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
 import { EffectBridge } from "@/effect/bridge"
+import { Token } from "@/util/token" // kilocode_change
+import { usable as usableContext } from "./overflow" // kilocode_change
+import * as SlidingWindow from "./sliding-window" // kilocode_change
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -80,6 +83,10 @@ export const shouldAskPlanFollowup = KiloSessionPrompt.shouldAskPlanFollowup
 
 // kilocode_change start - persistent tool-output pruning when payload is already large
 const REQUEST_PRUNE_BYTES = 1_250_000
+
+// kilocode_change start - sliding window context truncation
+const SLIDING_WINDOW_DEFAULT_TOKENS = 40_000
+// kilocode_change end
 // kilocode_change end
 
 const log = Log.create({ service: "session.prompt" })
@@ -1612,9 +1619,39 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               if (nextSize > REQUEST_PRUNE_BYTES) log.warn("payload still large after pruning", { size: nextSize })
             }
             // kilocode_change end
+            // kilocode_change start - reuse effective context budget and system payload for sliding window
+            const cfg = yield* config.get()
+            const compactionCfg = cfg.compaction
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT) // kilocode_change
+            // kilocode_change end
+            // kilocode_change start - sliding window truncation
+            if (compactionCfg?.sliding_window) {
+              const requested = compactionCfg.sliding_window_tokens ?? SLIDING_WINDOW_DEFAULT_TOKENS
+              const keep = compactionCfg.tail_turns ?? SlidingWindow.DEFAULT_TAIL_TURNS
+              const reserve =
+                Token.estimate(JSON.stringify(system)) +
+                (isLastStep
+                  ? Token.estimate(JSON.stringify([{ role: "assistant", content: MAX_STEPS }]))
+                  : 0)
+              const budget = SlidingWindow.clamp({
+                requested,
+                usable: usableContext({ cfg, model }),
+                reserve,
+              })
+              const marker =
+                compactionCfg.sliding_window_marker ??
+                "[Earlier conversation history was truncated to fit the context window. " +
+                  "If you need historical context (e.g. past experiment results), consult the log files referenced in your instructions.]"
+              modelMsgs = SlidingWindow.apply(
+                modelMsgs as Array<{ role: string; content: unknown }>,
+                budget,
+                marker,
+                keep,
+              ) as typeof modelMsgs
+            }
+            // kilocode_change end
             const result = yield* handle.process({
               // kilocode_change
               // kilocode_change start - keep Ask/Plan tool filtering hardened against session allows
