@@ -282,6 +282,20 @@ export const dict = {
     "Przycisk 'Ulepsz podpowiedź' pomaga ulepszyć Twoją prośbę, dostarczając dodatkowy kontekst, wyjaśnienia lub przeformułowania. Spróbuj wpisać prośbę tutaj i kliknij przycisk ponownie, aby zobaczyć, jak to działa.",
   "prompt.action.indexing": "Ustawienia indeksowania",
 
+  "speechToText.tooltip.start": "Rozpocznij wprowadzanie głosowe",
+  "speechToText.tooltip.stop": "Zatrzymaj przechwytywanie dźwięku",
+  "speechToText.tooltip.transcribing": "Transkrybowanie... Kliknij, aby anulować.",
+  "speechToText.tooltip.error": "Wprowadzanie głosowe nie powiodło się. Kliknij, aby wyczyścić.",
+  "speechToText.error.title": "Wprowadzanie głosowe nie powiodło się",
+  "speechToText.error.loginRequired": "Zaloguj się do Kilo, aby korzystać z wprowadzania głosowego.",
+  "speechToText.error.permission": "Odmówiono dostępu do mikrofonu.",
+  "speechToText.error.microphone": "Nie udało się uruchomić mikrofonu.",
+  "speechToText.error.recording": "Nagrywanie nie powiodło się.",
+  "speechToText.error.emptyRecording": "Nie nagrano żadnego dźwięku.",
+  "speechToText.error.emptyTranscript": "Nie wykryto mowy.",
+  "speechToText.error.encoding": "Nie udało się zakodować nagrania.",
+  "speechToText.toast.transcribed": "Wstawiono transkrypcję",
+
   "prompt.toast.pasteUnsupported.title": "Nieobsługiwane wklejanie",
   "prompt.toast.pasteUnsupported.description": "Tylko obrazy lub pliki PDF mogą być tutaj wklejane.",
   "prompt.toast.modelAgentRequired.title": "Wybierz agenta i model",
@@ -1199,6 +1213,14 @@ export const dict = {
   "settings.experimental.agentManagerTool.title": "Narzędzie Agent Manager",
   "settings.experimental.agentManagerTool.description":
     "Zezwól agentom na uruchamianie lokalnych sesji Agent Manager i sesji worktree z wywołania narzędzia",
+  "settings.experimental.speechToText.title": "Mowa na tekst",
+  "settings.experimental.speechToText.description":
+    "Włącz wprowadzanie głosowe w polach promptów przy użyciu konta Kilo za pośrednictwem Kilo Gateway.",
+  "settings.experimental.speechToText.disabledDescription":
+    "Włącz Kilo provider i zaloguj się, aby korzystać z wprowadzania głosowego w polach promptów.",
+  "settings.experimental.speechToTextModel.title": "Model mowy na tekst",
+  "settings.experimental.speechToTextModel.description":
+    "Wybierz model transkrypcji Kilo Gateway dla wprowadzania głosowego.",
   "settings.experimental.continueOnDeny.title": "Kontynuuj przy odmowie",
   "settings.experimental.continueOnDeny.description": "Kontynuuj pętlę agenta po odmowie uprawnienia",
   "settings.experimental.mcpTimeout.title": "Limit czasu MCP (ms)",
@@ -1411,7 +1433,10 @@ export const dict = {
   "settings.checkpoints.enable.title": "Włącz migawki",
   "settings.checkpoints.enable.description": "Twórz punkty kontrolne przed edycją plików",
   "settings.context.autoCompaction.title": "Automatyczna kompakcja",
-  "settings.context.autoCompaction.description": "Automatycznie kompaktuj kontekst, gdy jest pełny",
+  "settings.context.autoCompaction.description": "Automatycznie kompaktuj kontekst, zanim osiągnie limit",
+  "settings.context.compactionLimit.title": "Limit automatycznego kompaktowania",
+  "settings.context.compactionLimit.description":
+    "Kompaktuj, gdy kontekst osiągnie ten procent okna modelu. Pozostaw puste, aby używać tylko bufora bezpieczeństwa.",
   "settings.context.prune.title": "Przytnij stare wyjścia",
   "settings.context.prune.description": "Usuń stare wyjścia narzędzi podczas kompakcji",
   "settings.context.watcherPatterns": "Wzorce ignorowania obserwatora plików",

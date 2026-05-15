@@ -249,6 +249,13 @@ export interface AppendReviewCommentsMessage {
   autoSend?: boolean
 }
 
+export interface AppendReviewCommentsToTerminalMessage {
+  type: "appendReviewCommentsToTerminal"
+  comments: ReviewComment[]
+  autoSend?: boolean
+  targetTerminalId: string
+}
+
 export interface TriggerTaskMessage {
   type: "triggerTask"
   text: string
@@ -332,9 +339,40 @@ export interface AutocompleteSettingsLoadedMessage {
   }
 }
 
+export interface SpeechToTextSettingsLoadedMessage {
+  type: "speechToTextSettingsLoaded"
+  settings: {
+    enabled: boolean
+    model: string
+  }
+}
+
 export interface ChatCompletionResultMessage {
   type: "chatCompletionResult"
   text: string
+  requestId: string
+}
+
+export interface SpeechToTextResultMessage {
+  type: "speechToTextResult"
+  text: string
+  requestId: string
+}
+
+export interface SpeechToTextStartedMessage {
+  type: "speechToTextStarted"
+  requestId: string
+}
+
+export interface SpeechToTextCancelledMessage {
+  type: "speechToTextCancelled"
+  requestId: string
+}
+
+export interface SpeechToTextErrorMessage {
+  type: "speechToTextError"
+  error: string
+  code?: string
   requestId: string
 }
 
@@ -518,6 +556,7 @@ export interface AgentManagerStateMessage {
   tabOrder?: Record<string, string[]>
   worktreeOrder?: string[]
   sessionsCollapsed?: boolean
+  sidebarCollapsed?: boolean
   reviewDiffStyle?: "unified" | "split"
   reviewMarkdownRender?: boolean
   isGitRepo?: boolean
@@ -928,7 +967,12 @@ export type ExtensionMessage =
   | SkillsLoadedMessage
   | CommandsLoadedMessage
   | AutocompleteSettingsLoadedMessage
+  | SpeechToTextSettingsLoadedMessage
   | ChatCompletionResultMessage
+  | SpeechToTextStartedMessage
+  | SpeechToTextCancelledMessage
+  | SpeechToTextResultMessage
+  | SpeechToTextErrorMessage
   | FileSearchResultMessage
   | TerminalContextResultMessage
   | TerminalContextErrorMessage
@@ -964,6 +1008,7 @@ export type ExtensionMessage =
   | SetChatBoxMessage
   | AppendChatBoxMessage
   | AppendReviewCommentsMessage
+  | AppendReviewCommentsToTerminalMessage
   | TriggerTaskMessage
   | VariantsLoadedMessage
   | CloudSessionDataLoadedMessage

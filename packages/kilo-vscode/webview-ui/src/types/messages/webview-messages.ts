@@ -131,6 +131,12 @@ export interface OpenFileRequest {
   column?: number
 }
 
+export interface OpenContentRequest {
+  type: "openContent"
+  content: string
+  language?: string
+}
+
 export interface CancelLoginRequest {
   type: "cancelLogin"
 }
@@ -316,9 +322,30 @@ export interface RequestAutocompleteSettingsMessage {
   type: "requestAutocompleteSettings"
 }
 
+export interface RequestSpeechToTextSettingsMessage {
+  type: "requestSpeechToTextSettings"
+}
+
 export interface RequestChatCompletionMessage {
   type: "requestChatCompletion"
   text: string
+  requestId: string
+}
+
+export interface SpeechToTextStartMessage {
+  type: "speechToTextStart"
+  requestId: string
+  model: string
+  language?: string
+}
+
+export interface SpeechToTextStopMessage {
+  type: "speechToTextStop"
+  requestId: string
+}
+
+export interface SpeechToTextCancelMessage {
+  type: "speechToTextCancel"
   requestId: string
 }
 
@@ -633,6 +660,12 @@ export interface SetWorktreeOrderRequest {
 // Persist sessions collapsed state
 export interface SetSessionsCollapsedRequest {
   type: "agentManager.setSessionsCollapsed"
+  collapsed: boolean
+}
+
+// Persist sidebar collapsed state
+export interface SetSidebarCollapsedRequest {
+  type: "agentManager.setSidebarCollapsed"
   collapsed: boolean
 }
 
@@ -1065,7 +1098,11 @@ export type WebviewMessage =
   | DeleteSessionRequest
   | RenameSessionRequest
   | RequestAutocompleteSettingsMessage
+  | RequestSpeechToTextSettingsMessage
   | RequestChatCompletionMessage
+  | SpeechToTextStartMessage
+  | SpeechToTextStopMessage
+  | SpeechToTextCancelMessage
   | RequestFileSearchMessage
   | RequestTerminalContextMessage
   | RequestGitChangesContextMessage
@@ -1116,6 +1153,7 @@ export type WebviewMessage =
   | SetTabOrderRequest
   | SetWorktreeOrderRequest
   | SetSessionsCollapsedRequest
+  | SetSidebarCollapsedRequest
   | SetReviewDiffStyleRequest
   | SetReviewMarkdownRenderRequest
   | PersistVariantRequest
@@ -1191,6 +1229,7 @@ export type WebviewMessage =
   | ToggleSectionCollapsedRequest
   | MoveToSectionRequest
   | MoveSectionRequest
+  | OpenContentRequest
   | AgentManagerTerminalCreateRequest
   | AgentManagerTerminalCloseRequest
   | AgentManagerTerminalResizeRequest
