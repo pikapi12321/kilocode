@@ -1626,6 +1626,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
             // kilocode_change start - inline persistent context files
             const inlineFileSpecs = cfg.context_inline_files
+            let inlineFilesBlock: string | undefined
             if (inlineFileSpecs && inlineFileSpecs.length > 0) {
               const ctx = yield* InstanceState.context
               const root = ctx.worktree === "/" ? ctx.directory : ctx.worktree
@@ -1635,7 +1636,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   root,
                 ),
               )
-              if (block) system.push(block)
+              if (block) {
+                inlineFilesBlock = block
+                system.push(block)
+              }
             }
             // kilocode_change end
             const format = lastUser.format ?? { type: "text" as const }
@@ -1665,6 +1669,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 marker,
                 keep,
               ) as typeof modelMsgs
+            }
+            // kilocode_change end
+            // kilocode_change start - attach per-section token breakdown before processor updates persist the message
+            handle.message.context_breakdown = {
+              system: Token.estimate(JSON.stringify(env)),
+              tools: skills ? Token.estimate(skills) : 0,
+              instructions: Token.estimate(JSON.stringify(instructions)),
+              context_files: inlineFilesBlock ? Token.estimate(inlineFilesBlock) : 0,
+              messages: Token.estimate(JSON.stringify(modelMsgs)),
             }
             // kilocode_change end
             const result = yield* handle.process({

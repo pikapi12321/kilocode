@@ -591,6 +591,17 @@ export const Assistant = Schema.Struct({
       write: NonNegativeInt,
     }),
   }),
+  // kilocode_change start - per-section token breakdown for UI display
+  context_breakdown: Schema.optional(
+    Schema.Struct({
+      system: NonNegativeInt,
+      tools: NonNegativeInt,
+      instructions: NonNegativeInt,
+      context_files: NonNegativeInt,
+      messages: NonNegativeInt,
+    }),
+  ),
+  // kilocode_change end
   structured: Schema.optional(Schema.Any),
   variant: Schema.optional(Schema.String),
   finish: Schema.optional(Schema.String),

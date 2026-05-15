@@ -2318,7 +2318,8 @@ export const SessionProvider: ParentComponent = (props) => {
       const sel = selected()
       const model = sel ? provider.findModel(sel) : undefined
       const limit = model?.limit?.context ?? model?.contextLength
-      return calcContextUsage(m.tokens, limit)
+      const result = calcContextUsage(m.tokens, limit)
+      return { ...result, breakdown: m.context_breakdown }
     }
     return undefined
   })

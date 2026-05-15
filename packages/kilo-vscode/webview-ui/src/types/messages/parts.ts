@@ -88,9 +88,18 @@ export interface TokenUsage {
 }
 
 // Context usage derived from the last assistant message's tokens
+export interface ContextBreakdown {
+  system: number
+  tools: number
+  instructions: number
+  context_files: number
+  messages: number
+}
+
 export interface ContextUsage {
   tokens: number
   percentage: number | null
+  breakdown?: ContextBreakdown
 }
 
 export interface FileAttachment {

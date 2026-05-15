@@ -592,6 +592,7 @@ export function mapCloudSessionMessageToWebviewMessage(message: CloudSessionMess
     time: message.info.time,
     cost: message.info.cost,
     tokens: message.info.tokens,
+    context_breakdown: (message.info as any).context_breakdown,
   }
 }
 

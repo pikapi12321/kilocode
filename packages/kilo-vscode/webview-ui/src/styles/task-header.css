@@ -141,9 +141,11 @@
 .context-progress {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   flex: 1;
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
   font-size: var(--kilo-font-size-11);
   color: var(--vscode-descriptionForeground);
 }
@@ -151,6 +153,67 @@
 .context-progress-count {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.context-progress-breakdown {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.context-progress-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+}
+
+.context-progress-section--system {
+  border-color: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+}
+
+.context-progress-section--tools {
+  border-color: color-mix(in srgb, var(--vscode-terminal-ansiBlue, var(--vscode-foreground)) 22%, transparent);
+  background: color-mix(in srgb, var(--vscode-terminal-ansiBlue, var(--vscode-foreground)) 12%, transparent);
+}
+
+.context-progress-section--instructions {
+  border-color: color-mix(in srgb, var(--vscode-terminal-ansiGreen, var(--vscode-foreground)) 22%, transparent);
+  background: color-mix(in srgb, var(--vscode-terminal-ansiGreen, var(--vscode-foreground)) 12%, transparent);
+}
+
+.context-progress-section--files {
+  border-color: color-mix(in srgb, var(--vscode-terminal-ansiYellow, var(--vscode-foreground)) 22%, transparent);
+  background: color-mix(in srgb, var(--vscode-terminal-ansiYellow, var(--vscode-foreground)) 12%, transparent);
+}
+
+.context-progress-section--messages {
+  border-color: color-mix(in srgb, var(--vscode-terminal-ansiCyan, var(--vscode-foreground)) 22%, transparent);
+  background: color-mix(in srgb, var(--vscode-terminal-ansiCyan, var(--vscode-foreground)) 12%, transparent);
+}
+
+.context-progress-section-label {
+  opacity: 0.75;
+}
+
+.context-progress-section-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.context-progress-summary {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
 }
 
 .context-progress-bar {

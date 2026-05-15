@@ -20,6 +20,13 @@ export interface Message {
   summary?: { title?: string; body?: string; diffs?: unknown[] } | boolean
   cost?: number
   tokens?: TokenUsage
+  context_breakdown?: {
+    system: number
+    tools: number
+    instructions: number
+    context_files: number
+    messages: number
+  }
   finish?: string
 }
 

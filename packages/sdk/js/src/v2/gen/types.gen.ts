@@ -803,6 +803,13 @@ export type AssistantMessage = {
       write: number
     }
   }
+  context_breakdown?: {
+    system: number
+    tools: number
+    instructions: number
+    context_files: number
+    messages: number
+  }
   structured?: unknown
   variant?: string
   finish?: string
@@ -1874,13 +1881,21 @@ export type Config = {
    * Project-scoped files whose latest content is inlined into every prompt. Useful for persistent working memory (e.g. learnings.md, decisions.md) that the agent actively maintains across turns and sessions.
    */
   context_inline_files?: Array<{
-    /** Path to the file, relative to the project root. Must stay within the project worktree. */
+    /**
+     * Path to the file, relative to the project root. Must stay within the project worktree.
+     */
     path: string
-    /** Purpose of this file, shown to the LLM so it knows when and how to update it. */
+    /**
+     * Purpose of this file, shown to the LLM so it knows when and how to update it.
+     */
     description: string
-    /** Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file. */
+    /**
+     * Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file.
+     */
     max_tokens?: number
-    /** Target size after compression as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5. */
+    /**
+     * Target size after compression, expressed as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5.
+     */
     compress_ratio?: number
   }>
   watcher?: {
@@ -2079,6 +2094,10 @@ export type Config = {
      */
     reserved?: number
     /**
+     * Cap the usable context window. Compaction triggers when token usage reaches this value, regardless of the model's actual limit. Useful for cost control on large-context models (e.g. set 200000 to compact at 200k even on a 1M-context model).
+     */
+    max_context_tokens?: number
+    /**
      * Token count of recent tool outputs protected from pruning — outputs within this window are never cleared (default: 20000)
      */
     prune_protect?: number
@@ -2095,15 +2114,11 @@ export type Config = {
      */
     prompt_file?: string
     /**
-     * Cap the usable context window. Compaction triggers when token usage reaches this value, regardless of the model's actual limit. Useful for cost control on large-context models (e.g. set 200000 to compact at 200k even on a 1M-context model).
-     */
-    max_context_tokens?: number
-    /**
      * Enable sliding-window context mode. On every API call, messages older than sliding_window_tokens are dropped and replaced with a truncation marker. Suited for repetitive tasks (e.g. iterative experiments) where history is recorded in files and old turns carry little value. Disables auto-compaction.
      */
     sliding_window?: boolean
     /**
-     * Maximum tokens of recent messages to keep in sliding-window mode (default: 40000).
+     * Maximum tokens of recent messages to keep in sliding-window mode (default: 40000). Messages beyond this budget are truncated from the front and replaced with a marker.
      */
     sliding_window_tokens?: number
     /**
