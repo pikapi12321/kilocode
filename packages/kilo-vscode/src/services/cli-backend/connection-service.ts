@@ -64,8 +64,10 @@ export class KiloConnectionService {
   private sseClient: SdkSSEAdapter | null = null
   private info: { port: number } | null = null
   private config: ServerConfig | null = null
+  private dir: string | null = null
   private state: ConnectionState = "disconnected"
   private connectPromise: Promise<void> | null = null
+  private revivePromise: Promise<void> | null = null
   private healthPollTimer: ReturnType<typeof setInterval> | null = null
   private remoteService: import("../RemoteStatusService").RemoteStatusService | null = null
 
@@ -100,6 +102,8 @@ export class KiloConnectionService {
    * Lazily start server + SSE. Multiple callers share the same promise.
    */
   async connect(workspaceDir: string): Promise<void> {
+    this.dir = workspaceDir
+
     if (this.connectPromise) {
       return this.connectPromise
     }
@@ -527,8 +531,8 @@ export class KiloConnectionService {
       }
       const healthy = await this.checkHealth(baseUrl, password)
       if (!healthy && this.state === "connected") {
-        console.warn("[Kilo New] ConnectionService: ❤️‍🩹 Health check failed — forcing SSE reconnect")
-        this.sseClient?.reconnect()
+        console.warn("[Kilo New] ConnectionService: ❤️‍🩹 Health check failed — reviving backend")
+        this.revive("health")
       }
     }, HEALTH_POLL_INTERVAL_MS)
 
@@ -541,6 +545,39 @@ export class KiloConnectionService {
       clearInterval(this.healthPollTimer)
       this.healthPollTimer = null
     }
+  }
+
+  private revive(reason: string): void {
+    if (!this.dir) {
+      console.warn(`[Kilo New] ConnectionService: ⚠️ Skipping revive without workspace dir (${reason})`)
+      return
+    }
+
+    if (this.revivePromise) {
+      console.log(`[Kilo New] ConnectionService: ⏳ Revive already running (${reason})`)
+      return
+    }
+
+    const dir = this.dir
+    this.revivePromise = (async () => {
+      console.warn(`[Kilo New] ConnectionService: 🔄 Reviving backend after ${reason}`)
+      this.stopHealthPoll()
+      this.sseClient?.dispose()
+      this.sseClient = null
+      this.client = null
+      this.info = null
+      this.config = null
+      this.serverManager.dispose()
+      this.setState("disconnected")
+
+      try {
+        await this.connect(dir)
+      } catch (error) {
+        console.error(`[Kilo New] ConnectionService: ❌ Revive failed after ${reason}:`, error)
+      }
+    })().finally(() => {
+      this.revivePromise = null
+    })
   }
 
   private async checkHealth(baseUrl: string, password: string): Promise<boolean> {
@@ -602,6 +639,12 @@ export class KiloConnectionService {
     })
 
     this.sseClient.onError((error) => {
+      if (didConnect) {
+        console.warn("[Kilo New] ConnectionService: ❌ SSE failed after connect — reviving backend")
+        this.revive("sse-error")
+        return
+      }
+
       this.setState("error")
       rejectConnected?.(error)
       resolveConnected = null
@@ -610,6 +653,12 @@ export class KiloConnectionService {
 
     // Wire SSE state → broadcast to all registered state listeners
     this.sseClient.onStateChange((sseState) => {
+      if (didConnect && sseState !== "connected") {
+        console.warn(`[Kilo New] ConnectionService: 🔌 SSE moved to ${sseState} — reviving backend`)
+        this.revive(`sse-${sseState}`)
+        return
+      }
+
       this.setState(sseState)
 
       if (sseState === "connected") {

@@ -37,9 +37,14 @@ export class ServerManager {
    */
   async getServer(): Promise<ServerInstance> {
     console.log("[Kilo New] ServerManager: 🔍 getServer called")
-    if (this.instance) {
+    if (this.instance && ServerManager.isAlive(this.instance.process)) {
       console.log("[Kilo New] ServerManager: ♻️ Returning existing instance:", { port: this.instance.port })
       return this.instance
+    }
+
+    if (this.instance) {
+      console.warn("[Kilo New] ServerManager: 🧹 Clearing stale server instance")
+      this.instance = null
     }
 
     if (this.startupPromise) {
@@ -221,6 +226,23 @@ export class ServerManager {
       }
     } catch {
       // Process already gone — ignore
+    }
+  }
+
+  private static isAlive(proc: ChildProcess): boolean {
+    if (proc.pid === undefined) {
+      return false
+    }
+
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      return false
+    }
+
+    try {
+      process.kill(proc.pid, 0)
+      return true
+    } catch {
+      return false
     }
   }
 
