@@ -1,4 +1,6 @@
 import { Config } from "@/config/config"
+import * as Log from "@opencode-ai/core/util/log" // kilocode_change
+import { VALID_AGENT_CONFIG_KEYS, BUILTIN_AGENT_NAMES } from "@/config/agent-instance" // kilocode_change
 import z from "zod"
 import { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "../provider/schema"
@@ -79,6 +81,7 @@ export const layer = Layer.effect(
     const plugin = yield* Plugin.Service
     const skill = yield* Skill.Service
     const provider = yield* Provider.Service
+    const log = Log.create({ service: "agent" }) // kilocode_change
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Agent.state")(function* (ctx) {
@@ -256,6 +259,19 @@ export const layer = Layer.effect(
 
         // kilocode_change start - preprocess config to remap "build" key → "code"
         const agentConfigs = KiloAgent.preprocessConfig(cfg.agent ?? {})
+        // kilocode_change start - warn when agent.* is used to create custom (non-built-in) agents.
+        // Those should now use the agents[] array instead.
+        // Built-in names are allowed in agent.* for config overrides (model, prompt, etc.).
+        for (const key of Object.keys(agentConfigs)) {
+          if (!VALID_AGENT_CONFIG_KEYS.has(key)) {
+            log.warn(
+              "[kilo] 'agent.*' config for custom agents is deprecated. " +
+                `Move '${key}' to the 'agents' array in kilo.jsonc. ` +
+                "See: https://docs.kilo.dev/config/agents",
+            )
+          }
+        }
+        // kilocode_change end
         for (const [key, value] of Object.entries(agentConfigs)) {
           // kilocode_change end
           if (value.disable) {
@@ -286,6 +302,38 @@ export const layer = Layer.effect(
           item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
           KiloAgent.processConfigItem(item) // kilocode_change - populate displayName from options
         }
+
+        // kilocode_change start - register typed agent instances from the new agents[] array.
+        // Each instance inherits permissions from its base-type built-in agent and adds
+        // its own model/description on top.  Role, context files, and compaction overrides
+        // are resolved at prompt time (session/prompt.ts) using the raw instance config.
+        for (const instance of cfg.agents ?? []) {
+          if (BUILTIN_AGENT_NAMES.has(instance.name) || instance.name in agents) {
+            log.warn(
+              `[kilo] agents[] entry "${instance.name}" clashes with a built-in agent name and will be ignored. ` +
+                "Choose a name that does not conflict with: " +
+                [...BUILTIN_AGENT_NAMES].join(", "),
+            )
+            continue
+          }
+          // Determine which built-in to inherit permissions from
+          const baseTypeName = instance.type === "long-task" ? "code" : instance.type
+          const baseAgent = agents[baseTypeName]
+          const basePermission = baseAgent
+            ? baseAgent.permission
+            : Permission.merge(defaults, user)
+
+          agents[instance.name] = {
+            name: instance.name,
+            mode: "primary",
+            native: false,
+            description: instance.description,
+            permission: basePermission,
+            options: {},
+            ...(instance.model ? { model: Provider.parseModel(instance.model) } : {}),
+          }
+        }
+        // kilocode_change end
 
         // Ensure Truncate.GLOB is allowed unless explicitly configured
         for (const name in agents) {

@@ -65,6 +65,8 @@ import { Token } from "@/util/token" // kilocode_change
 import { usable as usableContext } from "./overflow" // kilocode_change
 import * as SlidingWindow from "./sliding-window" // kilocode_change
 import { ContextInlineFiles } from "./context-inline-files" // kilocode_change
+import { AgentType } from "@/config/agent-type" // kilocode_change
+import { AgentInstance as AgentConfig } from "@/config/agent-instance" // kilocode_change
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1491,24 +1493,32 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             lastFinished.summary !== true &&
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
+            // kilocode_change start - long-task agents use sliding window only; skip auto compaction
+            const overflowCfg = yield* config.get()
+            const overflowInstance = (overflowCfg.agents ?? []).find((a) => a.name === lastUser.agent)
+            const overflowTypeDefaults = overflowInstance ? AgentType.get(overflowInstance.type) : null
+            if (overflowTypeDefaults && !overflowTypeDefaults.allow_auto_compaction) {
+              // auto compaction prohibited for this agent type — sliding window handles context management
+              yield* elog.info("auto compaction blocked for long-task agent", { agent: lastUser.agent })
+            } else {
+              // kilocode_change end
+              const guard = KiloSessionPrompt.guardCompactionAttempt({
+                sessionID,
+                attempts: compactionAttempts,
+                closeReasons,
+                message: lastFinished,
+              })
+              if (guard.exhausted) {
+                yield* sessions.updateMessage(lastFinished)
+                yield* bus.publish(Session.Event.Error, { sessionID, error: guard.error })
+                break
+              }
+              compactionAttempts++
+              yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+              continue
             // kilocode_change start
-            const guard = KiloSessionPrompt.guardCompactionAttempt({
-              sessionID,
-              attempts: compactionAttempts,
-              closeReasons,
-              message: lastFinished,
-            })
-            if (guard.exhausted) {
-              // lastFinished is a prior turn's assistant — record exhaustion on the
-              // message whose size tipped us past the compaction cap.
-              yield* sessions.updateMessage(lastFinished)
-              yield* bus.publish(Session.Event.Error, { sessionID, error: guard.error })
-              break
             }
-            compactionAttempts++
             // kilocode_change end
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
-            continue
           }
 
           const agent = yield* agents.get(lastUser.agent)
@@ -1624,8 +1634,40 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const cfg = yield* config.get()
             const compactionCfg = cfg.compaction
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
-            // kilocode_change start - inline persistent context files
-            const inlineFileSpecs = cfg.context_inline_files
+
+            // kilocode_change start - resolve typed agent instance for per-agent config
+            const agentInstance = (cfg.agents ?? []).find((a) => a.name === agent.name)
+            const agentTypeDefaults = agentInstance ? AgentType.get(agentInstance.type) : null
+
+            // Inject role system block (after instructions, before context files)
+            if (agentInstance) {
+              const instCtx = yield* InstanceState.context
+              const instRoot = instCtx.worktree === "/" ? instCtx.directory : instCtx.worktree
+              let role: string | undefined
+              const roleSource = AgentConfig.selectRole(agentInstance, agentTypeDefaults?.default_role)
+              if (roleSource?.kind === "file") {
+                const absPath = ContextInlineFiles.resolvePath(roleSource.value, instRoot)
+                if (!absPath) {
+                  yield* elog.warn("ignoring role file outside worktree", { agent: agent.name, path: roleSource.value })
+                } else {
+                  role = yield* Effect.promise(async () => {
+                    try {
+                      return await fs.readFile(absPath, "utf-8")
+                    } catch {
+                      return undefined
+                    }
+                  })
+                }
+              } else if (roleSource?.kind === "inline") {
+                role = roleSource.value
+              }
+              if (role) system.push(`# Agent Role\n\n${role.trim()}`)
+            }
+            // kilocode_change end
+
+            // kilocode_change start - per-agent context files override global context_inline_files
+            // When the agent instance has context_inline_files, it completely replaces the global list.
+            const inlineFileSpecs = AgentConfig.selectContextFiles(agentInstance, cfg.context_inline_files)
             let inlineFilesBlock: string | undefined
             if (inlineFileSpecs && inlineFileSpecs.length > 0) {
               const ctx = yield* InstanceState.context
@@ -1645,10 +1687,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT) // kilocode_change
             // kilocode_change end
-            // kilocode_change start - sliding window truncation
-            if (compactionCfg?.sliding_window) {
-              const requested = compactionCfg.sliding_window_tokens ?? SLIDING_WINDOW_DEFAULT_TOKENS
-              const keep = compactionCfg.tail_turns ?? SlidingWindow.DEFAULT_TAIL_TURNS
+            // kilocode_change start - sliding window truncation (global flag or agent-type override)
+            const useSlidingWindow = agentTypeDefaults?.use_sliding_window || compactionCfg?.sliding_window
+            if (useSlidingWindow) {
+              // Per-agent instance overrides take precedence over global compaction config
+              const requested =
+                agentInstance?.compaction?.sliding_window_tokens ??
+                compactionCfg?.sliding_window_tokens ??
+                SLIDING_WINDOW_DEFAULT_TOKENS
+              const keep =
+                agentInstance?.compaction?.tail_turns ??
+                agentTypeDefaults?.tail_turns ??
+                compactionCfg?.tail_turns ??
+                SlidingWindow.DEFAULT_TAIL_TURNS
               const reserve =
                 Token.estimate(JSON.stringify(system)) +
                 (isLastStep
@@ -1660,15 +1711,29 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 reserve,
               })
               const marker =
-                compactionCfg.sliding_window_marker ??
+                agentInstance?.compaction?.sliding_window_marker ??
+                compactionCfg?.sliding_window_marker ??
                 "[Earlier conversation history was truncated to fit the context window. " +
                   "If you need historical context (e.g. past experiment results), consult the log files referenced in your instructions.]"
-              modelMsgs = SlidingWindow.apply(
+              const protectFirstUserMessage = agentTypeDefaults?.protectFirstUserMessage ?? false
+              const truncated = SlidingWindow.apply(
                 modelMsgs as Array<{ role: string; content: unknown }>,
                 budget,
                 marker,
                 keep,
-              ) as typeof modelMsgs
+                protectFirstUserMessage,
+              )
+              modelMsgs = truncated.messages as typeof modelMsgs
+              if (truncated.overflow) {
+                handle.message.error = new MessageV2.ContextOverflowError({
+                  message:
+                    "Sliding-window truncation could not fit the prompt within model limits while preserving required messages.",
+                }).toObject()
+                handle.message.finish = "error"
+                yield* sessions.updateMessage(handle.message)
+                closeReasons.set(sessionID, "error")
+                return "break" as const
+              }
             }
             // kilocode_change end
             // kilocode_change start - attach per-section token breakdown before processor updates persist the message
@@ -1730,27 +1795,32 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
             // kilocode_change end
             if (result === "compact") {
-              // kilocode_change start
-              const guard = KiloSessionPrompt.guardCompactionAttempt({
-                sessionID,
-                attempts: compactionAttempts,
-                closeReasons,
-                message: handle.message,
-              })
-              if (guard.exhausted) {
-                yield* sessions.updateMessage(handle.message)
-                yield* bus.publish(Session.Event.Error, { sessionID, error: guard.error })
-                return "break" as const
+              // kilocode_change start - long-task agents block auto compaction here too
+              // reuse agentTypeDefaults resolved above — same agent, same turn
+              if (agentTypeDefaults && !agentTypeDefaults.allow_auto_compaction) {
+                yield* elog.info("auto compaction (compact result) blocked for long-task agent", { agent: lastUser.agent })
+              } else {
+                const guard = KiloSessionPrompt.guardCompactionAttempt({
+                  sessionID,
+                  attempts: compactionAttempts,
+                  closeReasons,
+                  message: handle.message,
+                })
+                if (guard.exhausted) {
+                  yield* sessions.updateMessage(handle.message)
+                  yield* bus.publish(Session.Event.Error, { sessionID, error: guard.error })
+                  return "break" as const
+                }
+                compactionAttempts++
+                yield* compaction.create({
+                  sessionID,
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                  auto: true,
+                  overflow: !handle.message.finish,
+                })
               }
-              compactionAttempts++
               // kilocode_change end
-              yield* compaction.create({
-                sessionID,
-                agent: lastUser.agent,
-                model: lastUser.model,
-                auto: true,
-                overflow: !handle.message.finish,
-              })
             }
             // kilocode_change start — break out so a newer queued prompt can take over
             // instead of starting another LLM step for the now-superseded turn. The

@@ -1669,6 +1669,71 @@ export type AgentConfig = {
     | undefined
 }
 
+export type AgentInstance = {
+  /**
+   * Unique name for this agent instance. Must not clash with built-in agent names (code, build, plan, debug, ask, orchestrator, general, explore, compaction, title, summary, long-task).
+   */
+  name: string
+  /**
+   * Base type this instance inherits defaults from. 'long-task' enables sliding-window compaction and first-user-message protection. Other types map to the corresponding built-in agent.
+   */
+  type: "long-task" | "code" | "plan" | "ask" | "debug"
+  /**
+   * Short description shown in the agent selector.
+   */
+  description?: string
+  /**
+   * Inline role system prompt injected at session start (after instructions, before context files). Used when role_file is not set.
+   */
+  role?: string
+  /**
+   * Path to a role file relative to the worktree root. Takes priority over role when set. The file is read fresh each session.
+   */
+  role_file?: string
+  /**
+   * Files inlined into every prompt as working memory for this agent instance. When set, completely replaces the global context_inline_files (no merging). Primarily used with long-task agents.
+   */
+  context_inline_files?: Array<{
+    /**
+     * Path relative to the project worktree root.
+     */
+    path: string
+    /**
+     * Soft token cap. Content beyond this limit is truncated and the LLM is asked to compress.
+     */
+    max_tokens?: number
+    /**
+     * Target size after compression as a fraction of max_tokens (default 0.5).
+     */
+    compress_ratio?: number
+    /**
+     * Purpose shown to the LLM so it knows when and how to update this file.
+     */
+    description?: string
+  }>
+  /**
+   * Compaction settings for this agent instance (overrides global compaction config). For long-task agents, auto compaction is never permitted regardless of global config.
+   */
+  compaction?: {
+    /**
+     * Maximum tokens of recent messages to keep (overrides global sliding_window_tokens).
+     */
+    sliding_window_tokens?: number
+    /**
+     * Recent user turns to preserve verbatim (overrides global tail_turns).
+     */
+    tail_turns?: number
+    /**
+     * Custom truncation marker shown to the LLM when older messages are dropped.
+     */
+    sliding_window_marker?: string
+  }
+  /**
+   * Model override in 'provider/model-name' format. Supports any provider (e.g. 'anthropic/claude-opus-4-5', 'deepseek/deepseek-v3'). Falls back to the type default, then global default.
+   */
+  model?: string
+}
+
 export type ProviderConfig = {
   api?: string
   name?: string
@@ -1882,21 +1947,21 @@ export type Config = {
    */
   context_inline_files?: Array<{
     /**
-     * Path to the file, relative to the project root. Must stay within the project worktree.
+     * Path relative to the project worktree root.
      */
     path: string
     /**
-     * Purpose of this file, shown to the LLM so it knows when and how to update it.
-     */
-    description: string
-    /**
-     * Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file.
+     * Soft token cap. Content beyond this limit is truncated and the LLM is asked to compress.
      */
     max_tokens?: number
     /**
-     * Target size after compression, expressed as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5.
+     * Target size after compression as a fraction of max_tokens (default 0.5).
      */
     compress_ratio?: number
+    /**
+     * Purpose shown to the LLM so it knows when and how to update this file.
+     */
+    description: string
   }>
   watcher?: {
     ignore?: Array<string>
@@ -1987,6 +2052,10 @@ export type Config = {
     compaction?: AgentConfig
     [key: string]: AgentConfig | undefined
   }
+  /**
+   * User-defined agent instances. Each instance inherits defaults from a built-in type ('long-task', 'code', 'plan', 'ask', 'debug') and can override model, role, context files, and compaction settings. Replaces the legacy agent.* custom-agent pattern. See https://docs.kilo.dev/config/agents
+   */
+  agents?: Array<AgentInstance>
   /**
    * Custom provider configurations and model overrides
    */

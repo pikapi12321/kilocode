@@ -28,6 +28,7 @@ import { containsPath } from "../project/instance-context"
 import { zod } from "@/util/effect-zod"
 import { NonNegativeInt, PositiveInt, withStatics, type DeepMutable } from "@/util/schema"
 import { ConfigAgent } from "./agent"
+import { AgentInstance } from "./agent-instance" // kilocode_change
 import { ConfigCommand } from "./command"
 import { ConfigFormatter } from "./formatter"
 import { ConfigLayout } from "./layout"
@@ -143,26 +144,7 @@ export const Info = Schema.Struct({
   }),
   skills: Schema.optional(ConfigSkills.Info).annotate({ description: "Additional skill folder paths" }),
   // kilocode_change start - inline project-scoped working memory files into each prompt
-  context_inline_files: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        path: Schema.String.annotate({
-          description: "Path to the file, relative to the project root. Must stay within the project worktree.",
-        }),
-        description: Schema.String.annotate({
-          description: "Purpose of this file, shown to the LLM so it knows when and how to update it.",
-        }),
-        max_tokens: Schema.optional(NonNegativeInt).annotate({
-          description:
-            "Soft size cap in tokens for inlined content. When the file exceeds this, only the newest content up to the limit is injected and the LLM is instructed to compress the file.",
-        }),
-        compress_ratio: Schema.optional(Schema.Number).annotate({
-          description:
-            "Target size after compression, expressed as a fraction of max_tokens (e.g. 0.5 = compress to 50%). Defaults to 0.5.",
-        }),
-      }),
-    ),
-  ).annotate({
+  context_inline_files: Schema.optional(Schema.Array(AgentInstance.GlobalContextInlineFileSpec)).annotate({
     description:
       "Project-scoped files whose latest content is inlined into every prompt. Useful for persistent working memory (e.g. learnings.md, decisions.md) that the agent actively maintains across turns and sessions.",
   }),
@@ -256,6 +238,16 @@ export const Info = Schema.Struct({
       [Schema.Record(Schema.String, ConfigAgent.Info)],
     ),
   ).annotate({ description: "Agent configuration, see https://opencode.ai/docs/agents" }),
+  // kilocode_change start - typed agent instances with role, context files, and compaction config
+  agents: Schema.optional(Schema.mutable(Schema.Array(AgentInstance.Info))).annotate({
+    description:
+      "User-defined agent instances. Each instance inherits defaults from a built-in type " +
+      "('long-task', 'code', 'plan', 'ask', 'debug') and can override model, role, " +
+      "context files, and compaction settings. " +
+      "Replaces the legacy agent.* custom-agent pattern. " +
+      "See https://docs.kilo.dev/config/agents",
+  }),
+  // kilocode_change end
   provider: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(ConfigProvider.Info))).annotate({
     // kilocode_change - nullable for delete sentinel
     description: "Custom provider configurations and model overrides",

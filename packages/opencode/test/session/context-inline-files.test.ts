@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { buildContextFilesBlock } from "../../src/session/context-inline-files"
+import { buildContextFilesBlock, readPromptFile } from "../../src/session/context-inline-files"
 
 describe("session context inline files", () => {
   test("skips absolute paths outside the project root", async () => {
@@ -80,5 +80,33 @@ describe("session context inline files", () => {
     expect(block).toContain("LATEST-ENTRY")
     expect(block).not.toContain("OLD-ENTRY")
     expect(block).toContain("Earlier file content omitted to fit context")
+  })
+
+  test("reads an in-worktree prompt file", async () => {
+    await using root = await tmpdir({
+      init: async (dir) => {
+        const file = path.join(dir, "ROLE.md")
+        await Bun.write(file, "agent role")
+      },
+    })
+
+    const text = await readPromptFile("ROLE.md", root.path)
+
+    expect(text).toBe("agent role")
+  })
+
+  test("rejects prompt files outside the project root", async () => {
+    await using root = await tmpdir()
+    await using other = await tmpdir({
+      init: async (dir) => {
+        const file = path.join(dir, "ROLE.md")
+        await Bun.write(file, "secret role")
+        return file
+      },
+    })
+
+    const text = await readPromptFile(other.extra, root.path)
+
+    expect(text).toBeUndefined()
   })
 })

@@ -21,6 +21,17 @@ export function resolvePath(filePath: string, worktree: string): string | undefi
   return Filesystem.contains(root, resolved) ? resolved : undefined
 }
 
+export async function readPromptFile(filePath: string, worktree: string): Promise<string | undefined> {
+  const resolved = resolvePath(filePath, worktree)
+  if (!resolved) return undefined
+
+  try {
+    return await fs.readFile(resolved, "utf-8")
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Read a single context file and return its current content, or an empty
  * string if the file does not yet exist.
@@ -65,7 +76,9 @@ function renderEntry(spec: ContextFileSpec, resolvedPath: string, content: strin
   const targetTokens = maxTokens ? Math.floor(maxTokens * ratio) : undefined
   const next = maxTokens !== undefined ? truncate(content, maxTokens) : { text: content, total: Token.estimate(content), truncated: false }
 
-  const header = `[Context file: ${resolvedPath} — ${spec.description}]`
+  const header = spec.description
+    ? `[Context file: ${resolvedPath} — ${spec.description}]`
+    : `[Context file: ${resolvedPath}]`
 
   const body = content.trim()
     ? next.truncated
